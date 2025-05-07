@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+__pycache__/##
+*/**/__pycache__/
+data/models/memory_*
+gns2_env/
+gns2_env/**
+log.sh
+jobs/scripts/train_gns.sh
+jobs/scripts/exact/
+jobs/scripts/exact/**
+jobs/scripts/gns/
+jobs/scripts/gns/**

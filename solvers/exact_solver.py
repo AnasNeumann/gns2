@@ -12,7 +12,7 @@ from pprint import pprint
 # ###############################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
-__license__ = "Apache 2.0 License"
+__license__ = "MIT License"
 
 BASIC_PATH = './'
 
@@ -444,7 +444,7 @@ def solve_one(instance: Instance, cpus: int, memory: int, time: int, solution_pa
 
 '''
     TEST WITH
-    python exact_solver.py --size=s --id=151 --mode=test --path=./ --time=1 --memory=8
+    python solvers/exact_solver.py --size=s --id=151 --mode=test --path=./ --time=1 --memory=8
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII/L1 exact solver")

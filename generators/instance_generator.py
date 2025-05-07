@@ -222,8 +222,8 @@ def build_one(size: int, id: int, w_makespan: float):
 if __name__ == '__main__':
     '''
         TEST WITH
-        python instance_generator.py --debug=false --train=150 --test=50
-        python instance_generator.py --debug=true
+        python generators/instance_generator.py --debug=false --train=150 --test=50
+        python generators/instance_generator.py --debug=true
     '''
     parser = argparse.ArgumentParser(description="EPSIII instances generator")
     parser.add_argument("--debug", help="Generate for debug mode", required=True)

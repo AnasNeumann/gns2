@@ -7,7 +7,7 @@ from .graph import FeatureConfiguration, State
 from torch_geometric.utils import scatter
 
 # =====================================================
-# =*= GRAPH ATTENTION NEURAL NETWORK (GaNN) =*=
+# =*= GRAPH ATTENTION NEURAL NETWORK (GNN) =*=
 # =====================================================
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
@@ -228,26 +228,10 @@ class L1_EmbbedingGNN(Module):
         state_embedding = torch.cat([pooled_items, pooled_operations, pooled_resources], dim=-1)[0]
         return torch.cat([state_embedding, alpha], dim=0), m_embeddings, r_embbedings, i_embbedings, o_embbedings
 
-class L1_CommonCritic(Module):
-    def __init__(self, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, critic_hidden_channels: int):
-        super(L1_CommonCritic, self).__init__()
-        first_dimension = critic_hidden_channels
-        second_dimenstion = int(critic_hidden_channels / 2)
-        state_vector_size = resource_and_material_embedding_size + 2*operation_and_item_embedding_size + 1
-        self.critic_mlp = Sequential(
-            Linear(state_vector_size, first_dimension), ReLU(),
-            Linear(first_dimension, second_dimenstion), ReLU(), 
-            Linear(second_dimenstion, 1)
-        )
-
-    def forward(self, state_embedding: Tensor):
-        return self.critic_mlp(state_embedding)
-
 class L1_OutousrcingActor(Module):
-    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN, shared_critic_mlp: L1_CommonCritic, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
+    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
         super(L1_OutousrcingActor, self).__init__()
         self.shared_embedding_layers = shared_embedding_layers
-        self.critic_mlp = shared_critic_mlp
         self.actor_input_size = resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 2
         first_dimension = actor_hidden_channels
         second_dimenstion = int(actor_hidden_channels / 2)
@@ -265,14 +249,12 @@ class L1_OutousrcingActor(Module):
         inputs = torch.cat([i_embbedings[list(item_ids)], outsourcing_choices_tensor, state_embedding_expanded], dim=1)
         action_logits = self.actor(inputs)
         action_probs = F.softmax(action_logits, dim=0)
-        state_value = self.critic_mlp(state_embedding)
-        return action_probs, state_value
+        return action_probs
     
 class L1_SchedulingActor(Module):
-    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN,  shared_critic_mlp: L1_CommonCritic, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
+    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
         super(L1_SchedulingActor, self).__init__()
         self.shared_embedding_layers = shared_embedding_layers
-        self.critic_mlp = shared_critic_mlp
         self.actor_input_size = 2*resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 1
         first_dimension = actor_hidden_channels
         second_dimenstion = int(actor_hidden_channels / 2)
@@ -289,14 +271,12 @@ class L1_SchedulingActor(Module):
         inputs = torch.cat([o_embbedings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding_expanded], dim=1) # shape = [possible decision, concat embedding]
         action_logits = self.actor(inputs)
         action_probs = F.softmax(action_logits, dim=0)
-        state_value = self.critic_mlp(state_embedding)
-        return action_probs, state_value
+        return action_probs
 
 class L1_MaterialActor(Module):
-    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN, shared_critic_mlp: L1_CommonCritic, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
+    def __init__(self, shared_embedding_layers: L1_EmbbedingGNN, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, actor_hidden_channels: int):
         super(L1_MaterialActor, self).__init__()
         self.shared_embedding_layers = shared_embedding_layers
-        self.critic_mlp = shared_critic_mlp
         self.actor_input_size = 2*resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 1
         first_dimension = actor_hidden_channels
         second_dimenstion = int(actor_hidden_channels / 2)
@@ -313,5 +293,4 @@ class L1_MaterialActor(Module):
         inputs = torch.cat([o_embbedings[list(operations_ids)], m_embeddings[list(materials_ids)], state_embedding_expanded], dim=1)
         action_logits = self.actor(inputs)
         action_probs = F.softmax(action_logits, dim=0)
-        state_value = self.critic_mlp(state_embedding)
-        return action_probs, state_value
+        return action_probs

@@ -2,10 +2,10 @@ from model.instance import Instance
 from model.graph import GraphInstance, ItemFeatures, OperationFeatures, ResourceFeatures, MaterialFeatures, NeedForMaterialFeatures, NeedForResourceFeatures, YES, NO
 from torch import Tensor
 
-# ====================================================================
-# =*= TRANSLATE INSTANCE 2 GRAPH =*=
-# Complete code to translate a model.Instance to a model.GraphInstance
-# ====================================================================
+# #####################################
+# =*=  TRANSLATE INSTANCE 2 GRAPH   =*=
+# model.Instance to model.GraphInstance
+# #####################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "Apache 2.0 License"

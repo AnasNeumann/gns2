@@ -6,6 +6,7 @@ from torch import Tensor
 from tools.common import num_feature
 from tools.tensors import features2tensor, id2tensor
 from .instance import Instance
+from conf import YES, NO
 
 # =============================================================
 # =*= HYPER-GRAPH DATA STRUCTURES & MANIPULATION FUNCTIONS =*=
@@ -13,9 +14,6 @@ from .instance import Instance
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
-
-YES = 1.0
-NO = 0.0
 
 class FeatureConfiguration:
     def __init__(self):
