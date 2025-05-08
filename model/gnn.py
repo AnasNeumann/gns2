@@ -6,9 +6,9 @@ from torch import Tensor
 from .graph import FeatureConfiguration, State
 from torch_geometric.utils import scatter
 
-# =====================================================
-# =*= GRAPH ATTENTION NEURAL NETWORK (GNN) =*=
-# =====================================================
+# ##########################################################
+# =*= GRAPH ATTENTION NEURAL NETWORK (GNN): ARCHITECTURE =*=
+# ##########################################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
@@ -294,3 +294,4 @@ class L1_MaterialActor(Module):
         action_logits = self.actor(inputs)
         action_probs = F.softmax(action_logits, dim=0)
         return action_probs
+    

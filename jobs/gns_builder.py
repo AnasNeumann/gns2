@@ -1,15 +1,15 @@
 import argparse
 
-# =====================================================
+# ################################################
 # =*= CODE TO GENERATE JOBS FOR THE GNS SOLVER =*=
-# =====================================================
+# ################################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
 
 '''
     TEST WITH
-    python gns_builder.py --account=x --parent=y --mail=x@mail.com --time=20 --memory=187 --cpu=16 --number=1
+    python gns_builder.py --account=x --parent=y --mail=x@mail.com --time=20 --memory=187 --cpu=16 --version=1 --itrs=0
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII job builder")
@@ -17,7 +17,8 @@ if __name__ == '__main__':
     parser.add_argument("--parent", help="Compute Canada Parent Account", required=True)
     parser.add_argument("--mail", help="Compute Canada Email Adress", required=True)
     parser.add_argument("--time", help="Computing time", required=True)
-    parser.add_argument("--number", help="The number of current run", required=True)
+    parser.add_argument("--version", help="The version of current run", required=True)
+    parser.add_argument("--itrs", help="The iteration number of current run", required=True)
     parser.add_argument("--memory", help="Computing RAM", required=True)
     parser.add_argument("--cpu", help="Computing CPUs", required=True)
     args = parser.parse_args()
@@ -40,6 +41,6 @@ if __name__ == '__main__':
     f.write("source $SLURM_TMPDIR/env/bin/activate\n")
     f.write("pip install --upgrade pip --no-index\n")
     f.write("pip install --no-index -r "+BASIC_PATH+"requirements.txt\n")
-    f.write(f"python {BASIC_PATH}gns_solver.py --train=true --mode=prod --number={args.number} --path="+BASIC_PATH+" \n")
+    f.write(f"python {BASIC_PATH}gns_solver.py --train=true --mode=prod --version={args.version} --itrs={args.itrs} --path="+BASIC_PATH+" \n")
     f.write("deactivate\n")
     f.close()

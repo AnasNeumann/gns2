@@ -1,7 +1,19 @@
-from typing import Callable
-from torch.nn import Module
-from torch.optim import Adam
-from model.replay_memory import Memory
+import pickle
+import os
 
-def train(scheduling_agent: Module, embedding_stack: Module, shared_critic: Module, optimizer: Adam, memory: Memory, path: str, solve_function: Callable, device: str, run_number:int, debug:bool):
+from model.agent import Agents
+from model.instance import Instance
+
+from conf import *
+from tools.common import directory
+
+# ##################################################
+# =*= GNN TRAINER USING E-GREEDY DEEP Q-LEARNING =*=
+# ##################################################
+__author__ = "Anas Neumann - anas.neumann@polymtl.ca"
+__version__ = "1.0.0"
+__license__ = "MIT"
+
+# Main function of the e-greedy DQN trainer 
+def train(agents: Agents, path: str, device: str, version:int, itrs: int, debug:bool):
     pass

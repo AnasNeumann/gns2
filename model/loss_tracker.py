@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 import pickle
 
-# =========================
+# #########################
 # =*= MAPPO Loss Tacker =*=
-# =========================
+# #########################
 __author__ = "Anas Neumann"
 __version__ = "1.0.0"
 __license__ = "MIT License"

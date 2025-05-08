@@ -8,9 +8,9 @@ from model.agent import MAPPO_Losses
 from torch import Tensor
 import matplotlib.pyplot as plt
 
-# =====================================================
+# #####################################
 # =*= EXPERIMENTS: RESULTS ANALYSIS =*=
-# =====================================================
+# #####################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "Apache 2.0 License"

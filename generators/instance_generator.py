@@ -4,10 +4,9 @@ import pickle
 from model.instance import Instance
 from tools.common import init_several_1D, init_several_2D, init_2D, init_1D, init_several_3D, directory, to_bool
 
-# ==============================================================
+# #################################
 # =*= RANDOM INSTANCE GENERATOR =*=
-# Complete code to partially random instances of model.Instance
-# ==============================================================
+# #################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "Apache 2.0 License"

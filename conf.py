@@ -26,3 +26,8 @@ AGENT_HIDDEN_DIM     = 128 # hidden dimension inside agents' MLPs
 
 W_FINAL  = 0.75 # weight final values versus by-step change in reward computation 
 STD_RATE = 0.1  # standardization rate in reward computation
+
+TRAINSET = 0
+TESTSET  = 1
+TRAINING_SIZES = [['s'], ['s', 'm'], ['s', 'm', 'l'], ['s', 'm', 'l', 'xl'], ['s', 'm', 'l', 'xl', 'xxl']] # sizes at each training stage (curriculum learning)
+SOLVING_SIZES  = ['s'] # problem to solve in inference mode

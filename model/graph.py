@@ -8,9 +8,9 @@ from tools.tensors import features2tensor, id2tensor
 from .instance import Instance
 from conf import YES, NO
 
-# =============================================================
+# ############################################################
 # =*= HYPER-GRAPH DATA STRUCTURES & MANIPULATION FUNCTIONS =*=
-# =============================================================
+# ############################################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"

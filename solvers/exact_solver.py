@@ -1,11 +1,13 @@
 import argparse
-from tools.common import init_several_1D, init_2D, init_several_2D, init_3D, load_instance, directory
-from model.instance import Instance
-from model.solution import Solution
-import pandas as pd
-from ortools.sat.python import cp_model
 import time as systime
 from pprint import pprint
+import pandas as pd
+from ortools.sat.python import cp_model
+
+from model.instance import Instance
+from model.solution import Solution
+from model.dataset import Dataset
+from tools.common import init_several_1D, init_2D, init_several_2D, init_3D, directory
 
 # ###############################################
 # =*= EXACT CP Solver (Using Google OR-Tools) =*=
@@ -460,10 +462,9 @@ if __name__ == '__main__':
     time = int(args.time)
     memory = int(args.memory)
     print(f'CPU USED: {cpus}')
-    INSTANCE_PATH = BASIC_PATH+directory.instances+'/test/'+args.size+'/instance_'+args.id+'.pkl'
     SOLUTION_PATH = BASIC_PATH+directory.instances+'/test/'+args.size+'/solution_exact_'+args.id+'.csv'
-    print(f"Loading {INSTANCE_PATH}...")
-    instance = load_instance(INSTANCE_PATH)
+    dataset: Dataset = Dataset(BASIC_PATH)
+    instance = dataset.load_one(size=args.size, id=args.id)
     print("===* START SOLVING *===")
     solve_one(instance, cpus, memory, time, SOLUTION_PATH)
     print("===* END OF FILE *===")

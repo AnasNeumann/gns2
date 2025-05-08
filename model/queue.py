@@ -1,9 +1,6 @@
-from typing import Tuple
-import bisect
-
-# ==========================================
+# ##########################################
 # =*= A QUEUE OF TIME AND ACTION TO TEST =*=
-# ==========================================
+# ##########################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"

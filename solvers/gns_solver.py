@@ -4,7 +4,8 @@ import random
 
 import torch
 torch.autograd.set_detect_anomaly(True)
-from torch import Tensor, Module
+from torch import Tensor
+from torch.nn import Module
 
 from conf import * 
 from tools.common import debug_printer
@@ -13,21 +14,22 @@ from model.replay_memory import Tree, Action, HistoricalState
 from model.queue import Queue
 from model.instance import Instance
 from model.graph import GraphInstance, State, NO, YES
-from model.gnn import L1_MaterialActor, L1_OutousrcingActor, L1_SchedulingActor
+from model.agent import Agents
 
 from translators.instance2graph_translator import translate
 
 # ############################################
-# =*= MAIN FILE OF THE PROJECT: GNS SOLVER =*=
+# =*= GNS SOLVER FOR ONE SPECIFIC INSTANCE =*=
 # ############################################
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
 
+DEBUG_PRINT: callable = None
+
 # ######################################
 # =*= I. SEARCH FOR FEASIBLE ACTIONS =*=
 # ######################################
-DEBUG_PRINT: callable = None
 
 # Check if an item can or must be outsourced
 def can_or_must_outsource_item(instance: Instance, graph: GraphInstance, item_id: int):
@@ -328,17 +330,18 @@ def init_queue(i: Instance, graph: GraphInstance):
 # ################################
 
 # Select one action based on current policy
-def select_next_action(agents: list[Module], memory: Tree, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+    model: Module = agents.agents[actions_type].policy
     if train:
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
-            Q_values: Tensor = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
+            Q_values: Tensor = model(state, poss_actions, related_items, parent_items, alpha)
             return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
         else:
             return random.randint(0, len(poss_actions)-1)
     else:
         with torch.no_grad():
-            Q_values: Tensor = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
+            Q_values: Tensor = model(state, poss_actions, related_items, parent_items, alpha)
             return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
 
 # Compute setup times with current design settings and operation types of each finite-capacity resources
@@ -359,7 +362,7 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
         return ((time_to_test // scale) + 1) * scale
 
 # Main function to solve an instance from sratch 
-def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
+def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
     graph, lb_cmax, lb_cost, previous_operations, next_operations, related_items, parent_items = translate(i=instance, device=device)
@@ -370,7 +373,6 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
     current_cost = 0
     _LOCAL_ACTION_TREE: Action = None
     _last_action: Action = None
-    agents: list[Module] = [oustourcing_agent, scheduling_agent, material_agent]
     DEBUG_PRINT(f"Init Cmax: {lb_cmax} - Init cost: {lb_cost}$")
     Q = init_queue(instance, graph)
     while not Q.done():

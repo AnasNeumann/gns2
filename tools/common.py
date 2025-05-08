@@ -26,26 +26,6 @@ num_feature = Union[int, float]
 all_types_feature = Union[int, float, bool, list]
 generic_object = Union[object, Dict[Any, Any]]
 
-def objective_value(cmax: int, cost: int, cmax_weight: float):
-    cmax_weight = int(100 * cmax_weight)
-    cost_weight = 100 - cmax_weight
-    return cmax*cmax_weight + cost*cost_weight
-
-def load_instance(path: str):
-    with open(path, 'rb') as file:
-        return pickle.load(file)
-
-def load_instances(path: str):
-    print(f"Loading data from path: {path}...")
-    instances = []
-    for i in os.listdir(path):
-        if i.endswith('.pkl'):
-            file_path = os.path.join(path, i)
-            with open(file_path, 'rb') as file:
-                instances.append(pickle.load(file))
-    print("end of loading!")
-    return instances
-
 def set_memory_limit(max_ram_bytes: num_feature):
     _, hard = resource.getrlimit(resource.RLIMIT_AS)
     resource.setrlimit(resource.RLIMIT_AS, (max_ram_bytes * 1024 * 1024 * 1024, hard))
