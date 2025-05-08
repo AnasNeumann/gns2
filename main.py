@@ -1,14 +1,12 @@
 import argparse
-import pickle
-import os
 import time as systime
 
 import pandas as pd
 import torch
 torch.autograd.set_detect_anomaly(True)
-from tools.common import to_bool, directory
 
 from conf import *
+from tools.common import to_bool, directory, objective_value
 
 from solvers.gns_solver import solve
 from solvers.gns_training import train as pre_train
@@ -23,12 +21,6 @@ from model.dataset import Dataset
 __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
-
-# Compute the final objective value (to compare with other solving methos)
-def objective_value(cmax: int, cost: int, cmax_weight: float):
-    cmax_weight = int(100 * cmax_weight)
-    cost_weight = 100 - cmax_weight
-    return cmax*cmax_weight + cost*cost_weight
 
 # Pre-train networks on all instances
 def train(version: int, itrs: int, agents: Agents, device: str, path: str, debug: bool):
