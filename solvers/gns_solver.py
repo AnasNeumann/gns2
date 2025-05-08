@@ -1,8 +1,10 @@
 import os
+import math
+import random
 
 import torch
 torch.autograd.set_detect_anomaly(True)
-from torch import Tensor
+from torch import Tensor, Module
 
 from conf import * 
 from tools.common import debug_printer
@@ -326,8 +328,18 @@ def init_queue(i: Instance, graph: GraphInstance):
 # ################################
 
 # Select one action based on current policy
-def policy(Q_values: Tensor, greedy: bool=True):
-    return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
+def select_next_action(agents: list[Module], memory: Memory, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+    if train:
+        eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
+        if random.random() > eps_threshold and memory.size() >= BATCH_SIZE:
+            Q_values: Tensor = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
+            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
+        else:
+            return random.randint(0, len(poss_actions)-1)
+    else:
+        with torch.no_grad():
+            Q_values: Tensor = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
+            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
 
 # Compute setup times with current design settings and operation types of each finite-capacity resources
 def compute_setup_time(instance: Instance, graph: GraphInstance, op_id: int, res_id: int):
@@ -347,7 +359,7 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
         return ((time_to_test // scale) + 1) * scale
 
 # Main function to solve an instance from sratch 
-def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Memory=None, debug: bool=False):
+def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Memory=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
     graph, lb_cmax, lb_cost, previous_operations, next_operations, related_items, parent_items = translate(i=instance, device=device)
@@ -356,7 +368,7 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
     current_cmax = 0
     current_cost = 0
     transitions: list[Transition] = []
-    agents = [oustourcing_agent, scheduling_agent, material_agent]
+    agents: list[Module] = [oustourcing_agent, scheduling_agent, material_agent]
     old_cmax = 0
     old_cost = 0
     DEBUG_PRINT(f"Init Cmax: {lb_cmax} - Init cost: {lb_cost}$")
@@ -365,12 +377,7 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
         poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
         DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
         state: State = graph.to_state(device=device)
-        if train:
-            Q_values = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
-        else:
-            with torch.no_grad():
-                Q_values = agents[actions_type](state, poss_actions, related_items, parent_items, alpha)
-        idx = policy(Q_values, greedy=greedy)
+        idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, related_items, parent_items, alpha, train, episode, greedy)
         if actions_type == OUTSOURCING: # Outsourcing action
             item_id, outsourcing_choice = poss_actions[idx]
             p, e = graph.items_g2i[item_id]

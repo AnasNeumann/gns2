@@ -47,15 +47,11 @@ def load_trained_models(model_path:str, run_number:int, device:str, fine_tuned: 
     index = str(run_number)
     last_itr: str = str(LAST_SUCCESS)
     base_name = f"{size}_{id}_" if fine_tuned else ""
-    _rm_size = GNN_CONF['resource_and_material_embedding_size']
-    _io_size = GNN_CONF['operation_and_item_embedding_size']
-    _hidden_size = GNN_CONF['embedding_hidden_channels']
-    _ac_size = GNN_CONF['actor_hidden_channels']
-    shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(_rm_size, _io_size, _hidden_size, GNN_CONF['nb_layers'])
+    shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
     shared_GNN.load_state_dict(torch.load(model_path+'/'+base_name+'gnn_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
-    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    scheduling_agent: L1_SchedulingActor = L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
+    scheduling_agent: L1_SchedulingActor = L1_SchedulingActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
+    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
     outsourcing_agent.load_state_dict(torch.load(model_path+'/'+base_name+'outsourcing_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
     scheduling_agent.load_state_dict(torch.load(model_path+'/'+base_name+'scheduling_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
     material_agent.load_state_dict(torch.load(model_path+'/'+base_name+'material_use_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
@@ -78,14 +74,10 @@ def load_trained_models(model_path:str, run_number:int, device:str, fine_tuned: 
     return outsourcing_agent, scheduling_agent, material_agent
 
 def init_new_models(device: str, training_stage: bool=True):
-    _rm_size = GNN_CONF['resource_and_material_embedding_size']
-    _io_size = GNN_CONF['operation_and_item_embedding_size']
-    _hidden_size = GNN_CONF['embedding_hidden_channels']
-    _ac_size = GNN_CONF['actor_hidden_channels']
-    shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(_rm_size, _io_size, _hidden_size, GNN_CONF['nb_layers'])
-    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    scheduling_agent: L1_SchedulingActor= L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
+    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
+    scheduling_agent: L1_SchedulingActor= L1_SchedulingActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
+    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM)
     shared_GNN = shared_GNN.to(device)
     outsourcing_agent = outsourcing_agent.to(device)
     material_agent = material_agent.to(device)

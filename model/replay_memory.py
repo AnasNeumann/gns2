@@ -64,6 +64,7 @@ class Memory:
     def __init__(self, instance_id: str):
         self.instance_id: str = instance_id
         self.decisions: list[Transition] = []
+        self.size: int = 0
 
     def compute_all_rewards(self, decision: Transition, a: float, init_cmax: int, init_cost: int, final_makespan: int, final_cost: int=-1) -> None:
         """
