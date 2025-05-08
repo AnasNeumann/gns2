@@ -53,29 +53,29 @@ def load_trained_models(model_path:str, run_number:int, device:str, fine_tuned: 
     _ac_size = GNN_CONF['actor_hidden_channels']
     shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(_rm_size, _io_size, _hidden_size, GNN_CONF['nb_layers'])
     shared_GNN.load_state_dict(torch.load(model_path+'/'+base_name+'gnn_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
-    outsourcing_actor: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    scheduling_actor: L1_SchedulingActor = L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    material_actor: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    outsourcing_actor.load_state_dict(torch.load(model_path+'/'+base_name+'outsourcing_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
-    scheduling_actor.load_state_dict(torch.load(model_path+'/'+base_name+'scheduling_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
-    material_actor.load_state_dict(torch.load(model_path+'/'+base_name+'material_use_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
+    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    scheduling_agent: L1_SchedulingActor = L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    outsourcing_agent.load_state_dict(torch.load(model_path+'/'+base_name+'outsourcing_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
+    scheduling_agent.load_state_dict(torch.load(model_path+'/'+base_name+'scheduling_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
+    material_agent.load_state_dict(torch.load(model_path+'/'+base_name+'material_use_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
     shared_GNN = shared_GNN.to(device)
-    outsourcing_actor = outsourcing_actor.to(device)
-    material_actor = material_actor.to(device)
-    scheduling_actor = scheduling_actor.to(device)
-    outsourcing_actor.train()
-    scheduling_actor.train()
-    material_actor.train()
-    torch.compile(outsourcing_actor)
-    torch.compile(scheduling_actor)
-    torch.compile(material_actor)
+    outsourcing_agent = outsourcing_agent.to(device)
+    material_agent = material_agent.to(device)
+    scheduling_agent = scheduling_agent.to(device)
+    outsourcing_agent.train()
+    scheduling_agent.train()
+    material_agent.train()
+    torch.compile(outsourcing_agent)
+    torch.compile(scheduling_agent)
+    torch.compile(material_agent)
     if training_stage:
-        optimizer = Adam(list(scheduling_actor.parameters()) + list(material_actor.parameters()) + list(outsourcing_actor.parameters()), lr=LEARNING_RATE)
+        optimizer = Adam(list(scheduling_agent.parameters()) + list(material_agent.parameters()) + list(outsourcing_agent.parameters()), lr=LEARNING_RATE)
         optimizer.load_state_dict(torch.load(model_path+'/'+base_name+'adam_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
         with open(model_path+'/'+base_name+'memory_'+index+'_'+last_itr+'.pth', 'rb') as file:
             memory: Memories = pickle.load(file)
-        return outsourcing_actor, scheduling_actor, material_actor, optimizer, memory
-    return outsourcing_actor, scheduling_actor, material_actor
+        return outsourcing_agent, scheduling_agent, material_agent, optimizer, memory
+    return outsourcing_agent, scheduling_agent, material_agent
 
 def init_new_models(device: str, training_stage: bool=True):
     _rm_size = GNN_CONF['resource_and_material_embedding_size']
@@ -83,34 +83,34 @@ def init_new_models(device: str, training_stage: bool=True):
     _hidden_size = GNN_CONF['embedding_hidden_channels']
     _ac_size = GNN_CONF['actor_hidden_channels']
     shared_GNN: L1_EmbbedingGNN = L1_EmbbedingGNN(_rm_size, _io_size, _hidden_size, GNN_CONF['nb_layers'])
-    outsourcing_actor: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    scheduling_actor: L1_SchedulingActor= L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
-    material_actor: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    outsourcing_agent: L1_OutousrcingActor = L1_OutousrcingActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    scheduling_agent: L1_SchedulingActor= L1_SchedulingActor(shared_GNN, _rm_size, _io_size, _ac_size)
+    material_agent: L1_MaterialActor = L1_MaterialActor(shared_GNN, _rm_size, _io_size, _ac_size)
     shared_GNN = shared_GNN.to(device)
-    outsourcing_actor = outsourcing_actor.to(device)
-    material_actor = material_actor.to(device)
-    scheduling_actor = scheduling_actor.to(device)
-    outsourcing_actor.train()
-    scheduling_actor.train()
-    material_actor.train()
-    torch.compile(outsourcing_actor)
-    torch.compile(scheduling_actor)
-    torch.compile(material_actor)
+    outsourcing_agent = outsourcing_agent.to(device)
+    material_agent = material_agent.to(device)
+    scheduling_agent = scheduling_agent.to(device)
+    outsourcing_agent.train()
+    scheduling_agent.train()
+    material_agent.train()
+    torch.compile(outsourcing_agent)
+    torch.compile(scheduling_agent)
+    torch.compile(material_agent)
     if training_stage:
-        scheduling_optimizer = Adam(list(scheduling_actor.parameters()), lr=LEARNING_RATE)
-        material_optimizer = Adam(list(material_actor.parameters()), lr=LEARNING_RATE)
-        outsourcing_optimizer = Adam(list(outsourcing_actor.parameters()), lr=LEARNING_RATE)
+        scheduling_optimizer = Adam(list(scheduling_agent.parameters()), lr=LEARNING_RATE)
+        material_optimizer = Adam(list(material_agent.parameters()), lr=LEARNING_RATE)
+        outsourcing_optimizer = Adam(list(outsourcing_agent.parameters()), lr=LEARNING_RATE)
         memory: Memories = Memories()
-        return outsourcing_actor, scheduling_actor, material_actor, outsourcing_optimizer, scheduling_optimizer, material_optimizer, memory
-    return outsourcing_actor, scheduling_actor, material_actor
+        return outsourcing_agent, scheduling_agent, material_agent, outsourcing_optimizer, scheduling_optimizer, material_optimizer, memory
+    return outsourcing_agent, scheduling_agent, material_agent
 
 # Pre-train networks on all instances
-def train(run_number: int, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_actor: L1_MaterialActor, outsourcing_optimizer: Adam, scheduling_optimizer: Adam, material_optimizer: Adam, memory: Memories, device: str, path: str):
+def train(run_number: int, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, outsourcing_optimizer: Adam, scheduling_optimizer: Adam, material_optimizer: Adam, memory: Memories, device: str, path: str, debug: bool):
     print("Pre-training models with e-greedy DQN (on several instances)...")
-    pre_train(oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, outsourcing_optimizer=outsourcing_optimizer, scheduling_optimizer=scheduling_optimizer, material_optimizer=material_optimizer, memory=memory, path=path, solve_function=solve, device=device, run_number=run_number)
+    pre_train(oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, outsourcing_optimizer=outsourcing_optimizer, scheduling_optimizer=scheduling_optimizer, material_optimizer=material_optimizer, memory=memory, path=path, solve_function=solve, device=device, run_number=run_number, debug=debug)
     
 # Solve the target instance (size, id) only using inference
-def solve_one_instance(id: str, size: str, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_actor: L1_MaterialActor, run_number: int, device: str, path: str, repetitions: int=SOLVING_REPETITIONS):
+def solve_one_instance(id: str, size: str, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, run_number: int, device: str, path: str, repetitions: int=SOLVING_REPETITIONS, debug: bool=False):
     target_instance: Instance = load_test_dataset(path+directory.instances+'/test/'+size+'/instance_'+id+'.pkl')
     start_time = systime.time()
     best_cmax = -1.0
@@ -118,7 +118,7 @@ def solve_one_instance(id: str, size: str, oustourcing_agent: L1_OutousrcingActo
     best_obj = -1.0
     for rep in range(repetitions):
         print(f"SOLVING INSTANCE {size}_{id} (repetition {rep+1}/{repetitions})...")
-        graph, current_cmax, current_cost = solve(target_instance, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, train=False, device=device, greedy=(rep==0))
+        current_cmax, current_cost = solve(target_instance, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, train=False, device=device, greedy=(rep==0), debug=debug)
         _obj = objective_value(current_cmax, current_cost, target_instance.w_makespan)/100
         if best_obj < 0 or _obj < best_obj:
             best_obj = _obj
@@ -135,16 +135,14 @@ def solve_one_instance(id: str, size: str, oustourcing_agent: L1_OutousrcingActo
     })
     print(final_metrics)
     final_metrics.to_csv(path+directory.instances+'/test/'+size+'/solution_gns_'+id+'.csv', index=False)
-    with open(directory.solutions+'/'+size+'/gns_'+str(run_number)+'_graph_'+id+'.pkl', 'wb') as f:
-            pickle.dump(graph, f)
     return target_instance
 
 # Solve all instances only in inference mode
-def solve_all_instances(oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_actor: L1_MaterialActor, run_number: int, device: str, path: str):
+def solve_all_instances(oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, run_number: int, device: str, path: str, debug:bool):
     instances: list[Instance] = load_test_dataset(path=path, train=False)
     for i in instances:
         if (i.size, i.id):
-            solve_one_instance(id=str(i.id), size=str(i.size), oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, run_number=run_number, device=device, path=path, repetitions=SOLVING_REPETITIONS)
+            solve_one_instance(id=str(i.id), size=str(i.size), oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, run_number=run_number, device=device, path=path, repetitions=SOLVING_REPETITIONS, debug=debug)
 
 def agents_ready(device: str, run_number: int, path: str, train: bool):
     first = (run_number<=1)
@@ -169,16 +167,16 @@ if __name__ == '__main__':
     print(f"TPU Device: {_device}...")
     if to_bool(args.train):
             # python gns_solver.py --train=true --mode=prod --number=1 --interactive=true --path=./
-            oustourcing_agent, scheduling_agent, material_actor, outsourcing_optimizer, scheduling_optimizer, material_optimizer, memory = agents_ready(device=_device, run_number=_run_number, path=args.path, train=True)
-            train(run_number=_run_number, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, outsourcing_optimizer=outsourcing_optimizer, scheduling_optimizer=scheduling_optimizer, material_optimizer=material_optimizer, memory=memory, path=args.path, device=_device)
+            oustourcing_agent, scheduling_agent, material_agent, outsourcing_optimizer, scheduling_optimizer, material_optimizer, memory = agents_ready(device=_device, run_number=_run_number, path=args.path, train=True)
+            train(run_number=_run_number, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, outsourcing_optimizer=outsourcing_optimizer, scheduling_optimizer=scheduling_optimizer, material_optimizer=material_optimizer, memory=memory, path=args.path, device=_device, debug=_debug_mode)
     else:
         _debug_mode = (args.mode == 'test')
-        oustourcing_agent, scheduling_agent, material_actor = agents_ready(device=_device, run_number=_run_number, path=args.path, train=False)
+        oustourcing_agent, scheduling_agent, material_agent = agents_ready(device=_device, run_number=_run_number, path=args.path, train=False)
         if to_bool(args.target):
             # SOLVE ACTUAL INSTANCE: python gns_solver.py --target=true --size=xxl --id=151 --train=false --mode=test --path=./ --number=1
             # TRY ON DEBUG INSTANCE: python gns_solver.py --target=true --size=d --id=debug --train=false --mode=test --path=./ --number=1
-            i, s = solve_one_instance(id=args.id, size=args.size, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, run_number=args.number, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
+            i, s = solve_one_instance(id=args.id, size=args.size, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, run_number=args.number, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
         else:
             # python gns_solver.py --train=false --target=false --mode=prod --path=./ --number=1
-            solve_all_instances(run_number=args.number, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_actor=material_actor, device=_device, path=args.path, debug=_debug_mode)
+            solve_all_instances(run_number=args.number, oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, device=_device, path=args.path, debug=_debug_mode)
     print("===* END OF FILE *===")
