@@ -9,7 +9,7 @@ from torch import Tensor, Module
 from conf import * 
 from tools.common import debug_printer
 
-from model.replay_memory import Memory, Transition, Action
+from model.replay_memory import Tree, Action, HistoricalState
 from model.queue import Queue
 from model.instance import Instance
 from model.graph import GraphInstance, State, NO, YES
@@ -328,7 +328,7 @@ def init_queue(i: Instance, graph: GraphInstance):
 # ################################
 
 # Select one action based on current policy
-def select_next_action(agents: list[Module], memory: Memory, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+def select_next_action(agents: list[Module], memory: Tree, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
     if train:
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
@@ -359,27 +359,30 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
         return ((time_to_test // scale) + 1) * scale
 
 # Main function to solve an instance from sratch 
-def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Memory=None, episode: int=0, debug: bool=False):
+def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
     graph, lb_cmax, lb_cost, previous_operations, next_operations, related_items, parent_items = translate(i=instance, device=device)
     required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
     alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
+    REPLAY_MEMORY.init_tree(graph.to_state(device=device), alpha, lb_cmax, lb_cost)
     current_cmax = 0
     current_cost = 0
-    transitions: list[Transition] = []
+    _LOCAL_ACTION_TREE: Action = None
+    _last_action: Action = None
     agents: list[Module] = [oustourcing_agent, scheduling_agent, material_agent]
-    old_cmax = 0
-    old_cost = 0
     DEBUG_PRINT(f"Init Cmax: {lb_cmax} - Init cost: {lb_cost}$")
     Q = init_queue(instance, graph)
     while not Q.done():
         poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
         DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
         state: State = graph.to_state(device=device)
+        state_before_action: HistoricalState = HistoricalState(state, poss_actions, current_cmax, current_cost, _last_action)
         idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, related_items, parent_items, alpha, train, episode, greedy)
         if actions_type == OUTSOURCING: # Outsourcing action
             item_id, outsourcing_choice = poss_actions[idx]
+            target = item_id
+            value = outsourcing_choice
             p, e = graph.items_g2i[item_id]
             if outsourcing_choice == YES:
                 _outsourcing_time, _end_date, _price = outsource_item(Q, graph, instance, item_id, required_types_of_resources, required_types_of_materials, enforce_time=False)
@@ -392,17 +395,10 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
                 Q.remove_item(item_id)
                 graph.update_item(item_id, [('outsourced', NO), ('can_be_outsourced', NO)])
                 DEBUG_PRINT(f"Producing item {item_id} -> ({p},{e}) locally...")
-            if train:
-                transitions.append(Transition(agent_name=ACTIONS_NAMES[OUTSOURCING],
-                                                action= Action(type=actions_type, target=item_id, value=outsourcing_choice),
-                                                end_old=old_cmax, 
-                                                end_new=current_cmax, 
-                                                cost_old=old_cost, 
-                                                cost_new=current_cost,
-                                                parent=transitions[-1] if transitions else None, 
-                                                use_cost=True))
         elif actions_type == SCHEDULING: # scheduling action
             operation_id, resource_id = poss_actions[idx]
+            target = operation_id
+            value = resource_id
             p, o = graph.operations_g2i[operation_id]
             DEBUG_PRINT(f"Scheduling: operation {operation_id} -> ({p},{o}) on resource {graph.resources_g2i[resource_id]} at time {execution_times[idx]}...")     
             _operation_end, _actual_scheduling_time = schedule_operation(graph, instance, operation_id, resource_id, required_types_of_resources, execution_times[idx])
@@ -414,15 +410,10 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
                 try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
             DEBUG_PRINT(f"End of scheduling at time {_operation_end}...")
             current_cmax = max(current_cmax, _operation_end)
-            if train:
-                transitions.append(Transition(agent_name=ACTIONS_NAMES[SCHEDULING],
-                                                action= Action(type=actions_type, target=operation_id, value=resource_id),
-                                                end_old=old_cmax, 
-                                                end_new=current_cmax,
-                                                parent=transitions[-1] if transitions else None, 
-                                                use_cost=False))
         else: # Material use action
             operation_id, material_id = poss_actions[idx]
+            target = operation_id
+            value = material_id
             p, o = graph.operations_g2i[operation_id]
             DEBUG_PRINT(f"Material use: operation {operation_id} -> ({p},{o}) on material {graph.materials_g2i[material_id]} at time {execution_times[idx]}...")  
             apply_use_material(graph, instance, operation_id, material_id, required_types_of_materials, execution_times[idx])
@@ -430,17 +421,13 @@ def solve(instance: Instance, oustourcing_agent: L1_OutousrcingActor, scheduling
                 Q.remove_operation(operation_id)
                 try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
             current_cmax = max(current_cmax, execution_times[idx])
-            if train:
-                transitions.append(Transition(agent_name=ACTIONS_NAMES[MATERIAL_USE],
-                                                action= Action(type=actions_type, target=operation_id, value=material_id),
-                                                end_old=old_cmax,
-                                                end_new=current_cmax,
-                                                parent=transitions[-1] if transitions else None, 
-                                                use_cost=False))
-        old_cost = current_cost
-        old_cmax = current_cmax
+        if train:
+            _last_action = Action(idx, target, value, outsourcing_choice, state_before_action if _LOCAL_ACTION_TREE is not None else None)
+            if _LOCAL_ACTION_TREE is None:
+                _LOCAL_ACTION_TREE = _last_action
     if train:
-        REPLAY_MEMORY.add_or_update_decision(transitions[0], a=alpha, final_cost=current_cost, final_makespan=current_cmax, init_cmax=lb_cmax, init_cost=lb_cost)
+        _last_action.next_state = HistoricalState(graph.to_state(device=device), [], current_cmax, current_cost, _last_action)
+        REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True)
         return REPLAY_MEMORY, current_cmax, current_cost
     else:
         return current_cmax, current_cost

@@ -13,7 +13,7 @@ from conf import *
 from solvers.gns_solver import solve
 from solvers.gns_training import train as pre_train
 from model.gnn import L1_EmbbedingGNN, L1_MaterialActor, L1_OutousrcingActor, L1_SchedulingActor
-from model.replay_memory import Memories
+from model.replay_memory import Memory
 from model.instance import Instance
 
 # ###################################################################
@@ -69,7 +69,7 @@ def load_trained_models(model_path:str, run_number:int, device:str, fine_tuned: 
         optimizer = Adam(list(scheduling_agent.parameters()) + list(material_agent.parameters()) + list(outsourcing_agent.parameters()), lr=LEARNING_RATE)
         optimizer.load_state_dict(torch.load(model_path+'/'+base_name+'adam_weights_'+index+'_'+last_itr+'.pth', map_location=torch.device(device), weights_only=True))
         with open(model_path+'/'+base_name+'memory_'+index+'_'+last_itr+'.pth', 'rb') as file:
-            memory: Memories = pickle.load(file)
+            memory: Memory = pickle.load(file)
         return outsourcing_agent, scheduling_agent, material_agent, optimizer, memory
     return outsourcing_agent, scheduling_agent, material_agent
 
@@ -92,12 +92,12 @@ def init_new_models(device: str, training_stage: bool=True):
         scheduling_optimizer = Adam(list(scheduling_agent.parameters()), lr=LEARNING_RATE)
         material_optimizer = Adam(list(material_agent.parameters()), lr=LEARNING_RATE)
         outsourcing_optimizer = Adam(list(outsourcing_agent.parameters()), lr=LEARNING_RATE)
-        memory: Memories = Memories()
+        memory: Memory = Memory()
         return outsourcing_agent, scheduling_agent, material_agent, outsourcing_optimizer, scheduling_optimizer, material_optimizer, memory
     return outsourcing_agent, scheduling_agent, material_agent
 
 # Pre-train networks on all instances
-def train(run_number: int, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, outsourcing_optimizer: Adam, scheduling_optimizer: Adam, material_optimizer: Adam, memory: Memories, device: str, path: str, debug: bool):
+def train(run_number: int, oustourcing_agent: L1_OutousrcingActor, scheduling_agent: L1_SchedulingActor, material_agent: L1_MaterialActor, outsourcing_optimizer: Adam, scheduling_optimizer: Adam, material_optimizer: Adam, memory: Memory, device: str, path: str, debug: bool):
     print("Pre-training models with e-greedy DQN (on several instances)...")
     pre_train(oustourcing_agent=oustourcing_agent, scheduling_agent=scheduling_agent, material_agent=material_agent, outsourcing_optimizer=outsourcing_optimizer, scheduling_optimizer=scheduling_optimizer, material_optimizer=material_optimizer, memory=memory, path=path, solve_function=solve, device=device, run_number=run_number, debug=debug)
     
