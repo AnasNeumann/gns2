@@ -1,4 +1,4 @@
-LAST_SUCCESS        = 900 # number of saved iterations in the last training job
+INTERACTIVE = True # Do we want to vizualize the loss function in real time?
 SOLVING_REPETITIONS = 10  # solving repetition in inference mode
 
 EPS_START       = 0.99  # starting value of epsilon
@@ -9,6 +9,9 @@ GAMMA           = 1.0   # discount factor
 TAU             = 0.003 # update rate of the target network
 LEARNING_RATE   = 1e-3  # learning rate for the policy model
 BATCH_SIZE      = 128   # batch size at training time
+EPISODES        = 10000 # number of training episodes
+SWITCH_INSTANCE = 100   # number of episodes before switching instance
+SAVING_ITRS     = 100   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 
 YES = 1.0 # feature value for YES 
 NO  = 0.0 # feature value for NO
@@ -17,6 +20,7 @@ OUTSOURCING   = 0
 SCHEDULING    = 1
 MATERIAL_USE  = 2
 ACTIONS_NAMES = ["outsourcing", "scheduling", "material_use"]
+ACTIONS_COLOR = ["blue", "red", "green"]
 
 RM_EMBEDDING_SIZE    = 9   # embedding size for resources and material nodes
 OI_EMBEDDING_SIZE    = 16  # embedding size for items and operations nodes

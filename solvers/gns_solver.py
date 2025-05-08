@@ -430,6 +430,5 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
     if train:
         _last_action.next_state = HistoricalState(graph.to_state(device=device), [], current_cmax, current_cost, _last_action)
         REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True)
-        return REPLAY_MEMORY, current_cmax, current_cost
     else:
         return current_cmax, current_cost

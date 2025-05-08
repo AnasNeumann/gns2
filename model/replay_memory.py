@@ -130,16 +130,10 @@ class Memory:
             self.flat_memory.pop(0)
     
     #  Add a new instance if ID is not present yet
-    def add_instance_if_new(self, instance_id: str) -> Tree:
+    def add_instance_if_new(self, id: int) -> Tree:
         for memory in self.instances:
-            if memory.instance_id == instance_id:
+            if memory.instance_id == id:
                 return memory
-        new_memory: Tree = Tree(instance_id=instance_id)
+        new_memory: Tree = Tree(instance_id=id)
         self.instances.append(new_memory)
         return new_memory
-    
-    def get_instance_by_name(self, instance_name: str) -> Tree:
-        for tree in self.instance_trees:
-            if tree.instance_name == instance_name:
-                return tree
-        return None
