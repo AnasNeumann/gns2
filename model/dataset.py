@@ -30,7 +30,7 @@ class Dataset:
             return instance
 
     def load_training_instances(self, version: int):
-        for size in TRAINING_SIZES[version]:
+        for size in TRAINING_SIZES[version-1]:
             complete_path = self.base_path+'/train/'+size+'/'
             for i in os.listdir(complete_path):
                 if i.endswith('.pkl'):

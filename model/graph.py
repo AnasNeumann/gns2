@@ -5,7 +5,7 @@ from torch_geometric.utils import to_dense_adj
 from torch import Tensor
 from tools.common import num_feature
 from tools.tensors import features2tensor, id2tensor
-from .instance import Instance
+from model.instance import Instance
 from conf import YES, NO
 
 # ############################################################
@@ -77,7 +77,6 @@ class State:
         self.operation_assembly: EdgeStorage = operation_assembly
         self.item_assembly: EdgeStorage = item_assembly
         self.precedences: EdgeStorage = precedences
-        self.same_types: EdgeStorage = same_types
         if should_std:
             self.standardize(self.need_for_materials.edge_attr, FC.need_for_materials, ['execution_time', 'quantity_needed'])
             self.standardize(self.need_for_resources.edge_attr, FC.need_for_resources, ['processing_time', 'start_time', 'end_time'])

@@ -61,9 +61,8 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
     for i in dataset.test_instances:
         solve_one_instance(instance=i, size=str(i.size), agents=agents, version=version, device=device, path=path, repetitions=SOLVING_REPETITIONS, debug=debug)
 
-def build_agents(device: str, version: int, itrs: int, path: str, train: bool):
-    version = version if train else version -1
-    agents: Agents = Agents(device=device, base_path=path+directory.models+'/', version=version)
+def build_agents(device: str, version: int, itrs: int, path: str, interactive: bool):
+    agents: Agents = Agents(device=device, base_path=path+directory.models+'/', version=version, interactive=interactive)
     if version >1:
         agents.load(itrs)
     return agents
@@ -88,7 +87,7 @@ if __name__ == '__main__':
     _device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
     print(f"TPU Device: {_device}...")
     _debug_mode = (args.mode == 'test')
-    agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, path=args.path, train=True)
+    agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, path=args.path, interactive=to_bool(args.interactive))
     if to_bool(args.train):
             # python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --interactive=true 
             train(version=_version, itrs=_itrs, agents=agents, path=args.path, device=_device, debug=_debug_mode)

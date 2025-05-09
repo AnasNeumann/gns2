@@ -1,4 +1,3 @@
-INTERACTIVE = True # Do we want to vizualize the loss function in real time?
 SOLVING_REPETITIONS = 10  # solving repetition in inference mode
 
 EPS_START       = 0.99  # starting value of epsilon
@@ -8,11 +7,12 @@ MEMORY_CAPACITY = 60000 # number of transitions in the replay memory
 GAMMA           = 1.0   # discount factor
 TAU             = 0.003 # update rate of the target network
 LEARNING_RATE   = 1e-3  # learning rate for the policy model
-BATCH_SIZE      = 64    # batch size at training time
+BATCH_SIZE      = 32    # batch size at training time
 EPISODES        = 10000 # number of training episodes
 SWITCH_INSTANCE = 100   # number of episodes before switching instance
 SAVING_ITRS     = 100   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 2.0   # gradient normalization for really deep networks
+TRAINING_ITRS   = 5     # number of solving episodes before training the agents!
 
 YES = 1.0 # feature value for YES 
 NO  = 0.0 # feature value for NO
@@ -23,7 +23,7 @@ MATERIAL_USE  = 2
 ACTIONS_NAMES = ["outsourcing", "scheduling", "material_use"]
 ACTIONS_COLOR = ["blue", "red", "green"]
 
-RM_EMBEDDING_SIZE    = 9   # embedding size for resources and material nodes
+RM_EMBEDDING_SIZE    = 8   # embedding size for resources and material nodes
 OI_EMBEDDING_SIZE    = 16  # embedding size for items and operations nodes
 STACK_SIZE           = 2   # stack size of GNN embedding layers
 EMBEDDING_HIDDEN_DIM = 64  # hidden dimension while embedding
