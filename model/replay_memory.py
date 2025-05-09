@@ -20,7 +20,7 @@ class HistoricalState:
         self.end: int = end
         self.cost: int = cost
         self.tree: Tree = tree
-        if self.parent_action.next_state is not None:
+        if self.parent_action is not None:
             self.parent_action.next_state = self
 
 class Action:
@@ -41,15 +41,17 @@ class Action:
     
     # Compute the final reward
     def compute_reward(self, a: float, init_cmax: int, init_cost: int, final_makespan: int, final_cost: int=-1, device: str="") -> Tensor:
-        _d: float = STD_RATE*(a*init_cmax + (1-a)*init_cost)
-        makespan_part: float =  (1.0-W_FINAL) * (self.end_new - self.end_old) + W_FINAL * (final_makespan - init_cmax)
+        _d: float            = STD_RATE*(a*init_cmax + (1-a)*init_cost)
+        end_before: int      = self.parent_state.end if self.parent_state is not None else init_cmax
+        makespan_part: float =  (1.0-W_FINAL) * (self.next_state.end - end_before) + W_FINAL * (final_makespan - init_cmax)
         if self.action_type == OUTSOURCING:
-            cost_part: float = (1.0-W_FINAL) * (self.cost_new - self.cost_old) + W_FINAL * (final_cost - init_cost)
+            cost_before: int = self.parent_state.cost if self.parent_state is not None else init_cost
+            cost_part: float = (1.0-W_FINAL) * (self.next_state.cost - cost_before) + W_FINAL * (final_cost - init_cost)
             _r =  -1.0 * (a*makespan_part + (1-a)*cost_part)/_d
             with torch.no_grad():
                 self.reward = torch.tensor([_r], dtype=torch.float32, device=device)
         else:
-            _t = -1.0 * (a*makespan_part)/_d
+            _r = -1.0 * (a*makespan_part)/_d
             with torch.no_grad():
                 self.reward = torch.tensor([_r], dtype=torch.float32, device=device)
         return self.reward
@@ -69,9 +71,8 @@ class Tree:
         self.size: int = 0
         self.global_memory: Memory = global_memory
 
-    def init_tree(self, init_state: HistoricalState, alpha: Tensor, related_items: Tensor, parents: Tensor, init_makesan: int, init_cost: int):
-        if self.init_state == None:
-            self.init_state = init_state
+    def init_tree(self, alpha: Tensor, related_items: Tensor, parents: Tensor, init_makesan: int, init_cost: int):
+        if self.alpha == None:
             self.init_makesan = init_makesan
             self.init_cost = init_cost
             self.alpha = alpha
@@ -87,7 +88,7 @@ class Tree:
     # Add decision in the memory or update reward if already exist
     def add_or_update_action(self, action: Action, final_makespan: int, final_cost: int=-1, need_rewards: bool=True, device: str="") -> Action:
         if need_rewards:
-            self.compute_all_rewards(decision=action, final_cost=final_cost, final_makespan=final_makespan, device=device)
+            self.compute_all_rewards(action=action, final_cost=final_cost, final_makespan=final_makespan, device=device)
         if action.parent_state is None:
             _found: bool = False
             for _other_first_action in self.init_state.actions_tested:
@@ -99,12 +100,13 @@ class Tree:
                         self.add_or_update_action(action=_next, final_cost=final_cost, final_makespan=final_makespan, need_rewards=False, device=device)
                     return _other_first_action
             if not _found:
+                action.parent_state = self.init_state
                 self.init_state.actions_tested.append(action)
                 self.size += 1
-                _t: Action = action
-                while _t.next_state.actions_tested:
-                    self.global_memory.add_non_final_action(_t)
-                    _t = _t.next_state.actions_tested[0]
+                _a: Action = action
+                while _a.next_state.actions_tested:
+                    self.global_memory.add_non_final_action(_a)
+                    _a = _a.next_state.actions_tested[0]
                 return action
         else:
             _found: bool = False
@@ -119,10 +121,10 @@ class Tree:
             if not _found:
                 action.parent_state.actions_tested.append(action)
                 self.size += 1
-                _t: Action = action
-                while _t.next_state.actions_tested:
-                    self.global_memory.add_non_final_action(_t)
-                    _t = _t.next_state.actions_tested[0]
+                _a: Action = action
+                while _a.next_state.actions_tested:
+                    self.global_memory.add_non_final_action(_a)
+                    _a = _a.next_state.actions_tested[0]
                 return action
 
 class Memory:
@@ -146,6 +148,6 @@ class Memory:
         for memory in self.instances:
             if memory.instance_id == id:
                 return memory
-        new_memory: Tree = Tree(instance_id=id)
+        new_memory: Tree = Tree(global_memory=self, instance_id=id)
         self.instances.append(new_memory)
         return new_memory

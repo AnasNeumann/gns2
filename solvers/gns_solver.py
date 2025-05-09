@@ -368,7 +368,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
     required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
     alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
     if train:
-        REPLAY_MEMORY.init_tree(graph.to_state(device=device), alpha, related_items, parent_items, lb_cmax, lb_cost)
+        REPLAY_MEMORY.init_tree(alpha, related_items, parent_items, lb_cmax, lb_cost)
         _LOCAL_ACTION_TREE: Action = None
         _last_action: Action = None
     current_cmax = 0
@@ -381,6 +381,8 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
         state: State = graph.to_state(device=device)
         if train:
             state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
+            if REPLAY_MEMORY.init_state is None:
+                REPLAY_MEMORY.init_state = state_before_action
         idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, related_items, parent_items, alpha, train, episode, greedy)
         if actions_type == OUTSOURCING: # Outsourcing action
             item_id, outsourcing_choice = poss_actions[idx]
@@ -425,7 +427,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                 try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
             current_cmax = max(current_cmax, execution_times[idx])
         if train:
-            _last_action = Action(idx, target, value, outsourcing_choice, state_before_action if _LOCAL_ACTION_TREE is not None else None)
+            _last_action = Action(idx, actions_type, target, value, state_before_action if _LOCAL_ACTION_TREE is not None else None)
             if _LOCAL_ACTION_TREE is None:
                 _LOCAL_ACTION_TREE = _last_action
     if train:

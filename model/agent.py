@@ -173,7 +173,9 @@ class Agents:
     def optimize(self) -> list[float]:
         losses: list[float] = []
         for agent in self.agents:
-            l: float = agent.optimize_policy()
+            print(f"\t -> optimizing {agent.name} policy network...")
+            l: float = agent.optimize_policy(self.memory)
+            print(f"\t -> optimizing {agent.name} target network...")
             agent.optimize_target()
             agent.loss.update(loss_value=l)
             losses.append(l)

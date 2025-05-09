@@ -48,7 +48,7 @@ python main.py --train=false --target=false --path=./ --mode=prod --version=1 --
 
 ## Train the GNS2 solver using e-greedy DQN
 ```bash
-python main.py --train=true --mode=prod --version=1 --interactive=true --path=./
+python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --interactive=true
 ```
 
 ## Build and run SLURM jobs to train the GNS2 solver on DRAC super-computers

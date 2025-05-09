@@ -90,15 +90,14 @@ if __name__ == '__main__':
     _debug_mode = (args.mode == 'test')
     agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, path=args.path, train=True)
     if to_bool(args.train):
-            # python main.py --train=true --mode=prod --version=1 --interactive=true --path=./
+            # python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --interactive=true 
             train(version=_version, itrs=_itrs, agents=agents, path=args.path, device=_device, debug=_debug_mode)
     else:
         if to_bool(args.target):
-            # SOLVE ACTUAL INSTANCE: python main.py --target=true --size=xxl --id=151 --train=false --mode=test --path=./ --version=1 --itrs=0
-            # TRY ON DEBUG INSTANCE: python main.py --target=true --size=d --id=debug --train=false --mode=test --path=./ --version=1 --itrs=0
+            # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151
             dataset: Dataset = Dataset(base_path=args.path)
             solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
         else:
-            # python main.py --train=false --target=false --mode=prod --path=./ --version=1 --itrs=0
+            # python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0
             solve_all_instances(verions=_version, agents=agents, device=_device, path=args.path, debug=_debug_mode)
     print("===* END OF FILE *===")
