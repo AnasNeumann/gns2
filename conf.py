@@ -12,6 +12,7 @@ BATCH_SIZE      = 128   # batch size at training time
 EPISODES        = 10000 # number of training episodes
 SWITCH_INSTANCE = 100   # number of episodes before switching instance
 SAVING_ITRS     = 100   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
+MAX_GRAD_NORM   = 2.0   # gradient normalization for really deep networks
 
 YES = 1.0 # feature value for YES 
 NO  = 0.0 # feature value for NO

@@ -294,4 +294,3 @@ class L1_MaterialActor(Module):
         action_logits = self.actor(inputs)
         action_probs = F.softmax(action_logits, dim=0)
         return action_probs
-    
