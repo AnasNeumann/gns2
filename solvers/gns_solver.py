@@ -367,18 +367,20 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
     graph, lb_cmax, lb_cost, previous_operations, next_operations, related_items, parent_items = translate(i=instance, device=device)
     required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
     alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
-    REPLAY_MEMORY.init_tree(graph.to_state(device=device), alpha, related_items, parent_items, lb_cmax, lb_cost)
+    if train:
+        REPLAY_MEMORY.init_tree(graph.to_state(device=device), alpha, related_items, parent_items, lb_cmax, lb_cost)
+        _LOCAL_ACTION_TREE: Action = None
+        _last_action: Action = None
     current_cmax = 0
     current_cost = 0
-    _LOCAL_ACTION_TREE: Action = None
-    _last_action: Action = None
     DEBUG_PRINT(f"Init Cmax: {lb_cmax} - Init cost: {lb_cost}$")
     Q = init_queue(instance, graph)
     while not Q.done():
         poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
         DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
         state: State = graph.to_state(device=device)
-        state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
+        if train:
+            state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
         idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, related_items, parent_items, alpha, train, episode, greedy)
         if actions_type == OUTSOURCING: # Outsourcing action
             item_id, outsourcing_choice = poss_actions[idx]

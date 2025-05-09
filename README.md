@@ -42,8 +42,8 @@ bash jobs/scripts/1_run_all.sh exact_s
 
 ## Use the GNS2 solver (inference mode) to get good heuristic values
 ```bash
-python main.py --target=true --size=xxl --id=151 --train=false --mode=test --path=./ --version=1 --itrs=0 # one instance only
-python main.py --train=false --target=false --mode=prod --path=./ --version=1 --itrs=0 # all test instances
+python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151 # one instance only
+python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0 # all test instances
 ```
 
 ## Train the GNS2 solver using e-greedy DQN

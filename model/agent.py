@@ -51,7 +51,7 @@ class Loss():
             pickle.dump(self.y_data, f)
 
 class Agent:
-    def __init__(self, multi_agents_system, name: str, action_type: int, color: str, device: str):
+    def __init__(self, multi_agents_system, name: str, color: str, action_type: int, device: str):
         self.multi_agents_system: Agents = multi_agents_system
         self.policy: Module = None
         self.target: Module = None

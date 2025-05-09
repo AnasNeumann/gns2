@@ -51,7 +51,7 @@ def solve_one_instance(instance: Instance, size: str, agents: Agents, device: st
         'device_used': [device]
     })
     print(final_metrics)
-    final_metrics.to_csv(path+directory.instances+'/test/'+size+'/solution_gns_'+id+'.csv', index=False)
+    final_metrics.to_csv(path+directory.instances+'/test/'+size+'/solution_gns_'+str(instance.id)+'.csv', index=False)
     return instance
 
 # Solve all instances only in inference mode
@@ -63,7 +63,7 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
 
 def build_agents(device: str, version: int, itrs: int, path: str, train: bool):
     version = version if train else version -1
-    agents: Agents = Agents(device=device, path=path+directory.models+'/', version=version)
+    agents: Agents = Agents(device=device, base_path=path+directory.models+'/', version=version)
     if version >1:
         agents.load(itrs)
     return agents
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument("--itrs", help="The number of iterations of the current run", required=True)
     args = parser.parse_args()
     print(f"Execution mode: {args.mode}...")
-    _version = int(args._version)
+    _version = int(args.version)
     _itrs = int(args.itrs)
     _device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
     print(f"TPU Device: {_device}...")
@@ -97,7 +97,7 @@ if __name__ == '__main__':
             # SOLVE ACTUAL INSTANCE: python main.py --target=true --size=xxl --id=151 --train=false --mode=test --path=./ --version=1 --itrs=0
             # TRY ON DEBUG INSTANCE: python main.py --target=true --size=d --id=debug --train=false --mode=test --path=./ --version=1 --itrs=0
             dataset: Dataset = Dataset(base_path=args.path)
-            solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, version=_version, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
+            solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
         else:
             # python main.py --train=false --target=false --mode=prod --path=./ --version=1 --itrs=0
             solve_all_instances(verions=_version, agents=agents, device=_device, path=args.path, debug=_debug_mode)
