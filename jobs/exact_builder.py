@@ -17,7 +17,7 @@ MEMORY: list[int] = [30, 90, 135, 180, 300, 450]
 
 '''
     TEST WITH
-    python exact_builder.py --account=x --parent=y --mail=x@mail.com
+    python jobs/exact_builder.py --account=x --parent=y --mail=x@mail.com
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII job builder")
