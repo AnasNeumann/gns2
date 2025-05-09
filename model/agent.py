@@ -83,6 +83,37 @@ class Agent:
         self.target.load_state_dict(_target_weights)
 
     def optimize_policy(self):
+        """
+            Optimize the polict network using the Huber loss between selected action and expected best action (based on approx Q-value)
+                y = reward r + discounted factor γ x MAX_Q_VALUES(state s+1) predicted with Q_target
+                x = predicted quality of (s, a) using the policy network
+                L(x, y) = 1/2 (x-y)^2 for small errors (|x-y| ≤ δ) else δ|x-y| - 1/2 x δ^2
+        
+        _samples_size = min(len(memory), BATCH_SIZE)
+        sampled_transitions = memory.sample(batch_size=_samples_size)
+        BATCH = Transition(*zip(*sampled_transitions))
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, BATCH.next_features)), device=device, dtype=torch.bool)
+        non_final_next_states_problem_features = torch.cat([pf for pf, nf in zip(BATCH.problem_features, BATCH.next_features) if nf is not None])
+        non_final_next_states_solution_features = torch.cat([nf for nf in BATCH.next_features if nf is not None])
+        problem_features_batch = torch.cat(BATCH.problem_features)
+        solution_features_batch = torch.cat(BATCH.solution_features)
+        action_batch = torch.cat(BATCH.action)
+        reward_batch = torch.cat(BATCH.reward)
+        state_action_values = policy_net(problem_features_batch, solution_features_batch).gather(1, action_batch)
+        next_state_values = torch.zeros(_samples_size, device=device)
+        with torch.no_grad():
+            next_state_values[non_final_mask] = target_net(non_final_next_states_problem_features, non_final_next_states_solution_features).max(1).values
+        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+        optimizer.step()
+        printed_loss = loss.detach().cpu().item()
+        tracker.update(loss_value=printed_loss)
+        return printed_loss
+        """
         pass
 
 class OustourcingAgent(Agent):
