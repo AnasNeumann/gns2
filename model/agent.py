@@ -116,7 +116,7 @@ class Agent:
                     Q_next_logits: Tensor   = next_target_agent(next_state.state, next_state.possible_actions, _alpha)
                 max_Q_next: Tensor          = Q_next_logits.max()
                 target_val: Tensor          = action.reward + GAMMA * max_Q_next
-            huber_loss = F.smooth_l1_loss(Q_sa, target_val, reduction="mean")
+            huber_loss = F.smooth_l1_loss(Q_sa, target_val, reduction="mean", beta=DELTA)
             huber_loss.backward()
             loss_accum += huber_loss.item()
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), MAX_GRAD_NORM)
