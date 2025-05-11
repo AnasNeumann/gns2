@@ -63,21 +63,17 @@ class Tree:
     def __init__(self, global_memory, instance_id: str):
         self.instance_id: str = instance_id
         self.alpha: Tensor = None
-        self.related_items: Tensor = None
-        self.parents: Tensor = None
         self.init_makesan: int = -1
         self.init_cost: int = -1
         self.init_state: HistoricalState = None
         self.size: int = 0
         self.global_memory: Memory = global_memory
 
-    def init_tree(self, alpha: Tensor, related_items: Tensor, parents: Tensor, init_makesan: int, init_cost: int):
+    def init_tree(self, alpha: Tensor, init_makesan: int, init_cost: int):
         if self.alpha == None:
             self.init_makesan = init_makesan
             self.init_cost = init_cost
             self.alpha = alpha
-            self.related_items = related_items
-            self.parents = parents
 
     # Compute all rewards of a new found branch of actions and states
     def compute_all_rewards(self, action: Action, final_makespan: int, final_cost: int=-1, device: str="") -> None:
@@ -113,7 +109,7 @@ class Tree:
             for _existing_action in action.parent_state.actions_tested:
                 if _existing_action.same(action):
                     _found = True
-                    _existing_action.reward = torch.max(_next.reward, action.reward)
+                    _existing_action.reward = torch.max(_existing_action.reward, action.reward)
                     for _next in action.next_state.actions_tested:
                         _next.parent_state = _existing_action.next_state
                         self.add_or_update_action(action=_next, final_cost=final_cost, final_makespan=final_makespan, need_rewards=False, device=device)

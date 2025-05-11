@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 
 from torch.nn import Module
 from torch.optim import Adam
-from torch import autocast
 
-from model.gnn import *
+from model.fast_gnn import *
 from model.replay_memory import Memory, Action, HistoricalState
 from conf import *
+
+from tools.common import directory
 
 # #############################################
 # =*= AI AGENTS DATACLASSES AND DRL METHODS =*=
@@ -76,8 +77,8 @@ class Agent:
         self.target.to(device=self.device)
         self.policy.train()
         self.target.train()
-        torch.compile(self.policy, backend="aot_eager")
-        torch.compile(self.target, backend="aot_eager")
+        # self.policy    = torch.compile(self.policy, backend="aot_eager", dynamic=True, fullgraph=False)
+        # self.target    = torch.compile(self.target, backend="aot_eager", dynamic=True, fullgraph=False)
         self.optimizer = Adam(list(self.policy.parameters()), lr=LEARNING_RATE)
 
     def optimize_target(self):
@@ -99,13 +100,11 @@ class Agent:
             return 0.0
         actions: list[Action] = random.sample(memory, min(BATCH_SIZE, len(memory)))
         self.optimizer.zero_grad(set_to_none=True)
-        loss_accum: Tensor = torch.zeros(1, device=self.device)
+        loss_accum: float = 0
         for action in actions:
             history: HistoricalState = action.parent_state
             _alpha: Tensor           = history.tree.alpha
-            _related_items: Tensor   = history.tree.related_items
-            _parent_items: Tensor    = history.tree.parents
-            Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _related_items, _parent_items, _alpha) # Qπ(s,a)
+            Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _alpha) # Qπ(s,a)
             Q_sa: Tensor             = Q_logits[action.id]
             done: bool  = len(action.next_state.possible_actions) == 0
             if done:
@@ -114,7 +113,7 @@ class Agent:
                 next_state: HistoricalState = action.next_state
                 next_target_agent: Module   = self.multi_agents_system.agents[next_state.actions_tested[0].action_type].target
                 with torch.no_grad(): # max_a′ Q_target_{who_acts_next}(s′,a′)
-                    Q_next_logits: Tensor   = next_target_agent(next_state.state, next_state.possible_actions, _related_items, _parent_items, _alpha)
+                    Q_next_logits: Tensor   = next_target_agent(next_state.state, next_state.possible_actions, _alpha)
                 max_Q_next: Tensor          = Q_next_logits.max()
                 target_val: Tensor          = action.reward + GAMMA * max_Q_next
             huber_loss = F.smooth_l1_loss(Q_sa, target_val, reduction="mean")
@@ -122,39 +121,41 @@ class Agent:
             loss_accum += huber_loss.item()
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), MAX_GRAD_NORM)
         self.optimizer.step()
-        return loss_accum.item() / len(actions)
+        return loss_accum / len(actions)
 
 class OustourcingAgent(Agent):
     def __init__(self, multi_agents_system, device: str, interactive: bool):
         super().__init__(multi_agents_system, ACTIONS_NAMES[OUTSOURCING], ACTIONS_COLOR[OUTSOURCING], OUTSOURCING, device, interactive)
-        self.policy: L1_OutousrcingActor = L1_OutousrcingActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
-        self.target: L1_OutousrcingActor = L1_OutousrcingActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
+        self.policy: OutousrcingActor = OutousrcingActor()
+        self.target: OutousrcingActor = OutousrcingActor()
         self.target.load_state_dict(self.policy.state_dict())
         self._compile_and_move()
 
 class SchedulingAgent(Agent):
     def __init__(self, multi_agents_system, device: str, interactive: bool):
         super().__init__(multi_agents_system, ACTIONS_NAMES[SCHEDULING], ACTIONS_COLOR[SCHEDULING], SCHEDULING, device, interactive)
-        self.policy: L1_SchedulingActor= L1_SchedulingActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
-        self.target: L1_SchedulingActor= L1_SchedulingActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
+        self.policy: SchedulingActor= SchedulingActor()
+        self.target: SchedulingActor= SchedulingActor()
         self.target.load_state_dict(self.policy.state_dict())
         self._compile_and_move()
 
 class MaterialAgent(Agent):
     def __init__(self, multi_agents_system, device: str, interactive: bool):
         super().__init__(multi_agents_system, ACTIONS_NAMES[MATERIAL_USE], ACTIONS_COLOR[MATERIAL_USE], MATERIAL_USE, device, interactive)
-        self.policy: L1_MaterialActor = L1_MaterialActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
-        self.target: L1_MaterialActor = L1_MaterialActor(RM_EMBEDDING_SIZE, OI_EMBEDDING_SIZE, AGENT_HIDDEN_DIM, EMBEDDING_HIDDEN_DIM, STACK_SIZE)
+        self.policy: MaterialActor = MaterialActor()
+        self.target: MaterialActor = MaterialActor()
         self.target.load_state_dict(self.policy.state_dict())
         self._compile_and_move()
     
 class Agents:
     def __init__(self, device: str, base_path: str, version: int=-1, interactive: bool=False):
         self.device: str = device
-        self.base_path: str = base_path
+        self.base_path: str = base_path+directory.models+'/'
         self.version: int = version
         self.memory: Memory = Memory()
-        self.agents: list[Agent] = [OustourcingAgent(self, self.device, interactive), SchedulingAgent(self, self.device, interactive), MaterialAgent(self, self.device, interactive)]
+        self.agents: list[Agent] = [OustourcingAgent(self, self.device, interactive), 
+                                    SchedulingAgent(self, self.device, interactive), 
+                                    MaterialAgent(self, self.device, interactive)]
 
     def load(self, itrs: int):
         for agent in self.agents:
@@ -170,11 +171,15 @@ class Agents:
 
     def optimize(self) -> list[float]:
         losses: list[float] = []
-        for agent in self.agents:
-            print(f"\t -> optimizing {agent.name} policy network...")
-            l: float = agent.optimize_policy(self.memory)
-            print(f"\t -> optimizing {agent.name} target network...")
-            agent.optimize_target()
-            agent.loss.update(loss_value=l)
-            losses.append(l)
+        for i, agent in enumerate(self.agents):
+            if self.memory.flat_memories[i]:
+                print(f"\t -> optimizing {agent.name} policy network...")
+                l: float = agent.optimize_policy(self.memory)
+                print(f"\t -> optimizing {agent.name} target network...")
+                agent.optimize_target()
+                agent.loss.update(loss_value=l)
+                losses.append(l)
+            else:
+                losses.append(0.0)
+                print(f"\t -> No need to optimize {agent.name} policy network (replay memory still empty)...")
         return losses

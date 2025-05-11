@@ -4,6 +4,7 @@ import time as systime
 import pandas as pd
 import torch
 torch.autograd.set_detect_anomaly(True)
+# torch._dynamo.config.capture_scalar_outputs = True
 
 from conf import *
 from tools.common import to_bool, directory, objective_value
@@ -34,7 +35,7 @@ def solve_one_instance(instance: Instance, size: str, agents: Agents, device: st
     best_cost = -1.0
     best_obj = -1.0
     for rep in range(repetitions):
-        print(f"SOLVING INSTANCE {size}_{id} (repetition {rep+1}/{repetitions})...")
+        print(f"SOLVING INSTANCE {size}_{instance.id} (repetition {rep+1}/{repetitions})...")
         current_cmax, current_cost = solve(instance, agents=agents, train=False, device=device, greedy=(rep==0), debug=debug)
         _obj = objective_value(current_cmax, current_cost, instance.w_makespan)/100
         if best_obj < 0 or _obj < best_obj:
@@ -59,10 +60,10 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
     dataset: Dataset = Dataset(base_path=path)
     dataset.load_test_instances()
     for i in dataset.test_instances:
-        solve_one_instance(instance=i, size=str(i.size), agents=agents, version=version, device=device, path=path, repetitions=SOLVING_REPETITIONS, debug=debug)
+        solve_one_instance(instance=i, size=str(i.size), agents=agents, device=device, path=path, repetitions=SOLVING_REPETITIONS, debug=debug)
 
 def build_agents(device: str, version: int, itrs: int, path: str, interactive: bool):
-    agents: Agents = Agents(device=device, base_path=path+directory.models+'/', version=version, interactive=interactive)
+    agents: Agents = Agents(device=device, base_path=path, version=version, interactive=interactive)
     if version >1:
         agents.load(itrs)
     return agents
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     print(f"Execution mode: {args.mode}...")
     _version = int(args.version)
     _itrs = int(args.itrs)
-    _device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+    _device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"TPU Device: {_device}...")
     _debug_mode = (args.mode == 'test')
     agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, path=args.path, interactive=to_bool(args.interactive))
@@ -93,10 +94,10 @@ if __name__ == '__main__':
             train(version=_version, itrs=_itrs, agents=agents, path=args.path, device=_device, debug=_debug_mode)
     else:
         if to_bool(args.target):
-            # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151
+            # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151  --interactive=false
             dataset: Dataset = Dataset(base_path=args.path)
             solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
         else:
-            # python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0
-            solve_all_instances(verions=_version, agents=agents, device=_device, path=args.path, debug=_debug_mode)
+            # python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0  --interactive=false
+            solve_all_instances(version=_version, agents=agents, device=_device, path=args.path, debug=_debug_mode)
     print("===* END OF FILE *===")

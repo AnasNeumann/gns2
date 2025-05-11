@@ -8,6 +8,7 @@ from torch.nn import Module
 
 from conf import * 
 from tools.common import debug_printer
+from tools.tensors import tensors_to_probs
 
 from model.replay_memory import Tree, Action, HistoricalState
 from model.queue import Queue
@@ -329,19 +330,19 @@ def init_queue(i: Instance, graph: GraphInstance):
 # ################################
 
 # Select one action based on current policy
-def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], related_items: Tensor, parent_items: Tensor, alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
     model: Module = agents.agents[actions_type].policy
     if train:
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
-            Q_values: Tensor = model(state, poss_actions, related_items, parent_items, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
+            Q_values: Tensor = model(state, poss_actions, alpha)
+            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
         else:
             return random.randint(0, len(poss_actions)-1)
     else:
         with torch.no_grad():
-            Q_values: Tensor = model(state, poss_actions, related_items, parent_items, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(Q_values.view(-1), 1).item()
+            Q_values: Tensor = model(state, poss_actions, alpha)
+            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
 
 # Compute setup times with current design settings and operation types of each finite-capacity resources
 def compute_setup_time(instance: Instance, graph: GraphInstance, op_id: int, res_id: int):
@@ -364,11 +365,11 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
 def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
-    graph, lb_cmax, lb_cost, previous_operations, next_operations, related_items, parent_items = translate(i=instance, device=device)
+    graph, lb_cmax, lb_cost, previous_operations, next_operations, _, _ = translate(i=instance, device=device)
     required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
     alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
     if train:
-        REPLAY_MEMORY.init_tree(alpha, related_items, parent_items, lb_cmax, lb_cost)
+        REPLAY_MEMORY.init_tree(alpha, lb_cmax, lb_cost)
         _LOCAL_ACTION_TREE: Action = None
         _last_action: Action = None
     current_cmax = 0
@@ -383,7 +384,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
             state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
             if REPLAY_MEMORY.init_state is None:
                 REPLAY_MEMORY.init_state = state_before_action
-        idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, related_items, parent_items, alpha, train, episode, greedy)
+        idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
         if actions_type == OUTSOURCING: # Outsourcing action
             item_id, outsourcing_choice = poss_actions[idx]
             target = item_id

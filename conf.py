@@ -4,14 +4,15 @@ EPS_START       = 0.99  # starting value of epsilon
 EPS_END         = 0.005 # final value of epsilon
 EPS_DECAY_RATE  = 0.33  # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
 MEMORY_CAPACITY = 60000 # number of transitions in the replay memory
-GAMMA           = 1.0   # discount factor
+GAMMA           = 0.995 # discount factor
+DELTA           = 5.0   # Huber loss "threshold" parameter (distinguishing between small and big errors)
 TAU             = 0.003 # update rate of the target network
-LEARNING_RATE   = 1e-3  # learning rate for the policy model
-BATCH_SIZE      = 32    # batch size at training time
+LEARNING_RATE   = 2e-4  # learning rate for the policy model
+BATCH_SIZE      = 64    # batch size at training time
 EPISODES        = 10000 # number of training episodes
 SWITCH_INSTANCE = 100   # number of episodes before switching instance
 SAVING_ITRS     = 100   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
-MAX_GRAD_NORM   = 2.0   # gradient normalization for really deep networks
+MAX_GRAD_NORM   = 5.0   # gradient normalization for really deep networks
 TRAINING_ITRS   = 5     # number of solving episodes before training the agents!
 
 YES = 1.0 # feature value for YES 
@@ -28,6 +29,12 @@ OI_EMBEDDING_SIZE    = 16  # embedding size for items and operations nodes
 STACK_SIZE           = 2   # stack size of GNN embedding layers
 EMBEDDING_HIDDEN_DIM = 64  # hidden dimension while embedding
 AGENT_HIDDEN_DIM     = 128 # hidden dimension inside agents' MLPs
+
+D_MODEL   = 16
+STACK     = 2
+DROPOUT   = 0.1
+HEADS     = 4
+ACTOR_DIM = 64
 
 W_FINAL  = 0.75 # weight final values versus by-step change in reward computation 
 STD_RATE = 0.1  # standardization rate in reward computation

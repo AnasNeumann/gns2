@@ -4,7 +4,6 @@ import glob
 import os
 from tools.common import directory
 import pickle
-from model.agent import MAPPO_Losses
 from torch import Tensor
 import matplotlib.pyplot as plt
 
@@ -99,7 +98,7 @@ def display_losses(model_path: str, result_path: str, last: int):
 
 '''
     TEST WITH
-    python analysis/results_analysis.py --path=./ --last=9
+    python results_analysis.py --path=./ --last=9
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII/L1 results analysis")
@@ -111,4 +110,4 @@ if __name__ == '__main__':
     _result_path = args.path+directory.results
     _solution_types = ['exact', 'gns']
     combine_all_results(basic_path=_instances_path, solution_types=_solution_types, result_path=_result_path)
-    display_losses(model_path=_model_path, result_path=_result_path, last=int(args.last))
+    #display_losses(model_path=_model_path, result_path=_result_path, last=int(args.last))

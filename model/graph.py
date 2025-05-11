@@ -72,11 +72,19 @@ class State:
         self.operations: Tensor = operations.clone().to(device)
         self.resources: Tensor = resources.clone().to(device)
         self.materials: Tensor = materials.clone().to(device)
-        self.need_for_resources: EdgeStorage = need_for_resources.clone().to(device)
-        self.need_for_materials: EdgeStorage = need_for_materials.clone().to(device)
-        self.operation_assembly: EdgeStorage = operation_assembly
-        self.item_assembly: EdgeStorage = item_assembly
-        self.precedences: EdgeStorage = precedences
+
+        self.need_for_resources: EdgeStorage = need_for_resources.clone().to(device) # 'operation', 'needs_res', 'resource'
+        self.need_for_materials: EdgeStorage = need_for_materials.clone().to(device) # 'operation', 'needs_mat', 'material'
+        self.operation_assembly: EdgeStorage = operation_assembly # 'item', 'has', 'operation'
+        self.parent_assembly: EdgeStorage = item_assembly #  'item', 'parent', 'item'
+        self.precedences: EdgeStorage = precedences # 'operation', 'precedes', 'operation'
+        
+        self.successors: EdgeStorage = self._reverse_edge(self.precedences) # built like 'operation', 'succeed', 'operation'
+        self.children_assembly: EdgeStorage = self._reverse_edge(self.parent_assembly) # built like 'item', 'child', 'item'
+        self.rev_need_for_resources: EdgeStorage = self._reverse_edge(self.need_for_resources) # built like 'resource', 'execute', 'operation'
+        self.rev_need_for_materials: EdgeStorage = self._reverse_edge(self.need_for_materials) # built like 'material', 'comsumed by', 'operation'
+        self.operations_of_item: EdgeStorage = self._reverse_edge(self.operation_assembly) # 'operation', 'belongs to', 'item'
+
         if should_std:
             self.standardize(self.need_for_materials.edge_attr, FC.need_for_materials, ['execution_time', 'quantity_needed'])
             self.standardize(self.need_for_resources.edge_attr, FC.need_for_resources, ['processing_time', 'start_time', 'end_time'])
@@ -84,6 +92,18 @@ class State:
             self.standardize(self.operations, FC.operation, ['successors', 'remaining_time', 'remaining_resources', 'remaining_materials', 'available_time', 'end_time'])
             self.standardize(self.materials, FC.material, ['remaining_init_quantity', 'arrival_time', 'remaining_demand'])
             self.standardize(self.resources, FC.resource, ['available_time', 'remaining_operations', 'similar_resources'])
+
+    def _reverse_edge(self, src: EdgeStorage) -> EdgeStorage:
+        rev = EdgeStorage()
+        rev.edge_index = src.edge_index.flip(0).contiguous()
+        if hasattr(src, 'edge_attr') and src.edge_attr is not None:
+            rev.edge_attr = src.edge_attr
+        if hasattr(src, 'is_sorted'):
+            rev.is_sorted = src.is_sorted
+        if hasattr(src, '_num_src_nodes'):
+            rev._num_src_nodes = src._num_dst_nodes
+            rev._num_dst_nodes = src._num_src_nodes
+        return rev
 
     def standardize(self, tensor: Tensor, conf: dict, features: list[str]):
         """

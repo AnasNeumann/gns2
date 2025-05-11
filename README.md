@@ -42,8 +42,8 @@ bash jobs/scripts/1_run_all.sh exact_s
 
 ## Use the GNS2 solver (inference mode) to get good heuristic values
 ```bash
-python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151 # one instance only
-python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0 # all test instances
+python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151  --interactive=false # one instance only
+python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0 --interactive=false # all test instances
 ```
 
 ## Train the GNS2 solver using e-greedy DQN
@@ -59,5 +59,5 @@ sbatch jobs/scripts/train_gns.sh
 
 ## Analyze the final results
 ```bash
-python analysis/results_analysis.py --path=./ --last=9
+python results_analysis.py --path=./ --last=9
 ```

@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor
+import torch.nn.functional as F
 
 # #####################################################
 # =*= TENSOR-RELATED TOOLS USED ACCROSS THE PROJECT =*=
@@ -64,3 +65,10 @@ def fast_self_attention(attention_coefs: Tensor, non_linear_activation, matrix: 
 def fast_cross_attention(attention_coefs: Tensor, non_linear_activation, m1: Tensor, m2: Tensor):
     coef1, coef2 = attention_coefs.split(m1.size(-1), dim=0)
     return non_linear_activation((m1 @ coef1) + (m2 @ coef2))
+
+def tensors_to_probs(q: Tensor, temperature: float = 1.0) -> Tensor:
+    q = torch.nan_to_num(q, nan=-1e9, posinf=1e9, neginf=-1e9)  # finite
+    probs = F.softmax(q / temperature, dim=0)
+    if torch.allclose(probs.sum(), torch.tensor(0.0, device=probs.device)):
+        probs = torch.ones_like(probs) / probs.numel()
+    return probs
