@@ -100,9 +100,10 @@ class Tree:
                 self.init_state.actions_tested.append(action)
                 self.size += 1
                 _a: Action = action
+                self.global_memory.add_action(_a)
                 while _a.next_state.actions_tested:
-                    self.global_memory.add_non_final_action(_a)
                     _a = _a.next_state.actions_tested[0]
+                    self.global_memory.add_action(_a)
                 return action
         else:
             _found: bool = False
@@ -118,9 +119,10 @@ class Tree:
                 action.parent_state.actions_tested.append(action)
                 self.size += 1
                 _a: Action = action
+                self.global_memory.add_action(_a)
                 while _a.next_state.actions_tested:
-                    self.global_memory.add_non_final_action(_a)
                     _a = _a.next_state.actions_tested[0]
+                    self.global_memory.add_action(_a)
                 return action
 
 class Memory:
@@ -134,7 +136,7 @@ class Memory:
         self.flat_non_final_material_memory: list[Action] = []
         self.flat_memories: list[list[Action]] = [self.flat_non_final_outsourcing_memory, self.flat_non_final_scheduling_memory, self.flat_non_final_material_memory]
 
-    def add_non_final_action(self, action: Action):
+    def add_action(self, action: Action):
         self.flat_memories[action.action_type].append(action)
         if len(self.flat_memories[action.action_type]) > MEMORY_CAPACITY:
             self.flat_memories[action.action_type].pop(0)

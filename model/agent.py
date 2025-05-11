@@ -106,7 +106,7 @@ class Agent:
             _alpha: Tensor           = history.tree.alpha
             Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _alpha) # Qπ(s,a)
             Q_sa: Tensor             = Q_logits[action.id]
-            done: bool  = len(action.next_state.possible_actions) == 0
+            done: bool               = len(action.next_state.possible_actions) == 0
             if done:
                 target_val = action.reward
             else:
