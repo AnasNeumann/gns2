@@ -4,8 +4,8 @@ EPS_START       = 0.99  # starting value of epsilon
 EPS_END         = 0.005 # final value of epsilon
 EPS_DECAY_RATE  = 0.33  # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
 MEMORY_CAPACITY = 60000 # number of transitions in the replay memory
-GAMMA           = 0.995 # discount factor
-DELTA           = 5.0   # Huber loss "threshold" parameter (distinguishing between small and big errors)
+GAMMA           = 0.3   # discount factor
+DELTA           = 2.0   # Huber loss "threshold" parameter (distinguishing between small and big errors)
 TAU             = 0.003 # update rate of the target network
 LEARNING_RATE   = 2e-4  # learning rate for the policy model
 BATCH_SIZE      = 64    # batch size at training time
@@ -36,7 +36,7 @@ DROPOUT   = 0.1
 HEADS     = 4
 ACTOR_DIM = 64
 
-W_FINAL  = 0.8 # weight final values versus by-step change in reward computation 
+W_FINAL  = 0.8  # weight final values versus by-step change in reward computation 
 STD_RATE = 0.1  # standardization rate in reward computation
 
 TRAINSET = 0
