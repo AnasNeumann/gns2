@@ -16,6 +16,27 @@ __license__ = "MIT"
 def dim(v):
     return len(v)
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ResidualMLP(nn.Module):
+    def __init__(self, in_dim:  int, out_dim: int, dropout: float=DROPOUT, activation=F.relu):
+        super().__init__()
+        self.activation = activation
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        self.fc2 = nn.Linear(out_dim, out_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.res_proj = (nn.Identity() if in_dim == out_dim else nn.Linear(in_dim, out_dim))
+        self.norm = nn.LayerNorm(out_dim)
+
+    def forward(self, x):
+        out = self.activation(self.fc1(x))
+        out = self.dropout(out)
+        out = self.fc2(out)
+        out = self.norm(self.res_proj(x) + out)
+        return out
+
 class EmbbedingGNN(Module):
     def __init__(self, d_model: int = D_MODEL, stack: int = STACK, num_heads: int = HEADS, dropout: float = DROPOUT):
         super(EmbbedingGNN, self).__init__()
@@ -58,10 +79,10 @@ class EmbbedingGNN(Module):
             self.GAT_stack_res_for_op.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'resource', '->', 'operation'
             self.GAT_stack_mat_for_op.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'material', '->', 'operation'
 
-        self.material_MLP               = Sequential(Linear(2 * d_model, d_model), ReLU(), LayerNorm(d_model), Dropout(dropout))
-        self.resource_MLP               = Sequential(Linear(2 * d_model, d_model), ReLU(), LayerNorm(d_model), Dropout(dropout))
-        self.item_MLP                   = Sequential(Linear(4 * d_model, d_model), ReLU(), LayerNorm(d_model), Dropout(dropout))
-        self.operation_MLP              = Sequential(Linear(6 * d_model, d_model), ReLU(), LayerNorm(d_model), Dropout(dropout))
+        self.material_MLP               = ResidualMLP(2 * d_model, d_model, dropout=dropout)
+        self.resource_MLP               = ResidualMLP(2 * d_model, d_model, dropout=dropout)
+        self.item_MLP                   = ResidualMLP(4 * d_model, d_model, dropout=dropout)
+        self.operation_MLP              = ResidualMLP(6 * d_model, d_model, dropout=dropout)
         
     def forward(self, state: State):
         x_operations     = self.operation_upscale(state.operations)
@@ -93,30 +114,6 @@ class EmbbedingGNN(Module):
             x_operations = self.operation_MLP(torch.cat([x_operations, preds, succs, item_for_op, res_for_op, mat_for_op], dim=-1))
         return x_materials, x_resources, x_items, x_operations 
 
-class OutousrcingActor(Module):
-    def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
-        super(OutousrcingActor, self).__init__()
-        self.gnn               = EmbbedingGNN()
-        first_dimension        = actor_dim
-        second_dimenstion      = int(actor_dim / 2)
-        self.item_pooling      = AttentionalAggregation(Linear(d_model, 1))
-        self.operation_pooling = AttentionalAggregation(Linear(d_model, 1))
-        self.actor = Sequential(
-            Linear(3 * d_model + 2, first_dimension), ReLU(),
-            Linear(first_dimension, second_dimenstion), ReLU(),
-            Linear(second_dimenstion, 1)
-        )
-
-    def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
-        _, _, i_embeddings, o_embeddings = self.gnn(state)
-        item_ids, outsourcing_choices = zip(*actions)
-        outsourcing_choices_tensor = torch.tensor(outsourcing_choices, dtype=torch.float32, device=alpha.device).unsqueeze(1)
-        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
-        pooled_operations = self.operation_pooling(o_embeddings)
-        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
-        inputs            = torch.cat([i_embeddings[list(item_ids)], outsourcing_choices_tensor, state_embedding], dim=1)
-        return self.actor(inputs)
-    
 class SchedulingActor(Module):
     def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
         super(SchedulingActor, self).__init__()
@@ -142,6 +139,30 @@ class SchedulingActor(Module):
         inputs            = torch.cat([o_embeddings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding], dim=1) # shape = [possible decision, concat embedding]
         return self.actor(inputs)
 
+class OutousrcingActor(Module):
+    def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
+        super(OutousrcingActor, self).__init__()
+        self.gnn               = EmbbedingGNN()
+        first_dimension        = actor_dim
+        second_dimenstion      = int(actor_dim / 2)
+        self.item_pooling      = AttentionalAggregation(Linear(d_model, 1))
+        self.operation_pooling = AttentionalAggregation(Linear(d_model, 1))
+        self.actor = Sequential(
+            Linear(3 * d_model + 2, first_dimension), ReLU(),
+            Linear(first_dimension, second_dimenstion), ReLU(),
+            Linear(second_dimenstion, 1)
+        )
+
+    def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
+        _, _, i_embeddings, o_embeddings = self.gnn(state)
+        item_ids, outsourcing_choices = zip(*actions)
+        outsourcing_choices_tensor = torch.tensor(outsourcing_choices, dtype=torch.float32, device=alpha.device).unsqueeze(1)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
+        inputs            = torch.cat([i_embeddings[list(item_ids)], outsourcing_choices_tensor, state_embedding], dim=1)
+        return self.actor(inputs)
+    
 class MaterialActor(Module):
     def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
         super(MaterialActor, self).__init__()

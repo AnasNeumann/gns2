@@ -67,7 +67,7 @@ class FeatureConfiguration:
 FC: FeatureConfiguration = FeatureConfiguration()
 
 class State:
-    def __init__(self, items: Tensor, operations: Tensor, resources: Tensor, materials: Tensor, need_for_materials: EdgeStorage, need_for_resources: EdgeStorage, operation_assembly: EdgeStorage, item_assembly: EdgeStorage, precedences: EdgeStorage, same_types: EdgeStorage, device: str="", should_std: bool=False):
+    def __init__(self, items: Tensor, operations: Tensor, resources: Tensor, materials: Tensor, need_for_materials: EdgeStorage, need_for_resources: EdgeStorage, operation_assembly: EdgeStorage, item_assembly: EdgeStorage, precedences: EdgeStorage, device: str="", should_std: bool=True):
         self.items: Tensor = items.clone().to(device)
         self.operations: Tensor = operations.clone().to(device)
         self.resources: Tensor = resources.clone().to(device)
@@ -78,20 +78,20 @@ class State:
         self.operation_assembly: EdgeStorage = operation_assembly # 'item', 'has', 'operation'
         self.parent_assembly: EdgeStorage = item_assembly #  'item', 'parent', 'item'
         self.precedences: EdgeStorage = precedences # 'operation', 'precedes', 'operation'
+
+        if should_std:
+            self.standardize(self.need_for_materials.edge_attr, FC.need_for_materials, ['execution_time', 'quantity_needed'])
+            self.standardize(self.need_for_resources.edge_attr, FC.need_for_resources, ['processing_time', 'start_time', 'end_time', 'setup_time'])
+            self.standardize(self.items, FC.item, ['start_time', 'end_time', 'outsourcing_cost', 'outsourcing_time', 'remaining_time', 'parents', 'children', 'parents_physical_time', 'children_time'])
+            self.standardize(self.operations, FC.operation, ['successors', 'remaining_time', 'remaining_resources', 'remaining_materials', 'available_time', 'end_time'])
+            self.standardize(self.materials, FC.material, ['remaining_init_quantity', 'arrival_time', 'remaining_demand'])
+            self.standardize(self.resources, FC.resource, ['available_time', 'remaining_operations', 'similar_resources'])
         
         self.successors: EdgeStorage = self._reverse_edge(self.precedences) # built like 'operation', 'succeed', 'operation'
         self.children_assembly: EdgeStorage = self._reverse_edge(self.parent_assembly) # built like 'item', 'child', 'item'
         self.rev_need_for_resources: EdgeStorage = self._reverse_edge(self.need_for_resources) # built like 'resource', 'execute', 'operation'
         self.rev_need_for_materials: EdgeStorage = self._reverse_edge(self.need_for_materials) # built like 'material', 'comsumed by', 'operation'
         self.operations_of_item: EdgeStorage = self._reverse_edge(self.operation_assembly) # 'operation', 'belongs to', 'item'
-
-        if should_std:
-            self.standardize(self.need_for_materials.edge_attr, FC.need_for_materials, ['execution_time', 'quantity_needed'])
-            self.standardize(self.need_for_resources.edge_attr, FC.need_for_resources, ['processing_time', 'start_time', 'end_time'])
-            self.standardize(self.items, FC.item, ['start_time', 'end_time', 'outsourcing_cost', 'outsourcing_time', 'remaining_time', 'parents', 'children', 'parents_physical_time', 'children_time'])
-            self.standardize(self.operations, FC.operation, ['successors', 'remaining_time', 'remaining_resources', 'remaining_materials', 'available_time', 'end_time'])
-            self.standardize(self.materials, FC.material, ['remaining_init_quantity', 'arrival_time', 'remaining_demand'])
-            self.standardize(self.resources, FC.resource, ['available_time', 'remaining_operations', 'similar_resources'])
 
     def _reverse_edge(self, src: EdgeStorage) -> EdgeStorage:
         rev = EdgeStorage()
@@ -106,17 +106,13 @@ class State:
         return rev
 
     def standardize(self, tensor: Tensor, conf: dict, features: list[str]):
-        """
-            Standardize a feature
-        """
         for feature in features:
             pos: int = conf[feature]
             data = tensor[:, pos]
-            min_val = data.min()
-            max_val = data.max()
-            _d = max_val - min_val
-            if _d > 0:
-                tensor[:, pos] = (data - min_val) / _d
+            mean = data.mean()
+            std = data.std(unbiased=False)
+            tensor[:, pos] = (data - mean) / std if std > 0.0001 else data - mean
+            tensor[:, pos] = tensor[:, pos].clamp(-3, 3)
 
 class OperationFeatures:
     def __init__(self, started: num_feature, sync: num_feature, large_timescale: num_feature, successors: num_feature, remaining_time: num_feature, remaining_resources: num_feature, remaining_materials: num_feature, available_time: num_feature, end_time: num_feature, lb: num_feature):
@@ -250,6 +246,11 @@ class GraphInstance():
         self.operation_resource_time: list[list[list[int]]] = []
         self.approximate_design_load: list[list[int]] = []
         self.approximate_physical_load: list[list[int]] = []
+
+        self.lb_Cmax: int = 0
+        self.ub_Cmax: int = 0 
+        self.lb_cost: int = 0
+        self.ub_cost: int = 0
 
         self.graph: HeteroData = HeteroData()
         self.device: str = device
@@ -521,6 +522,4 @@ class GraphInstance():
                      operation_assembly = self.operation_assembly(),
                      item_assembly = self.item_assembly(),
                      precedences = self.precedences(),
-                     same_types = self.same_types(),
-                     device = device,
-                     should_std=False)
+                     device = device)
