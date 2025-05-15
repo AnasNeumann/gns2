@@ -246,7 +246,9 @@ class GraphInstance():
         self.operation_resource_time: list[list[list[int]]] = []
         self.approximate_design_load: list[list[int]] = []
         self.approximate_physical_load: list[list[int]] = []
-
+        self.approximate_item_local_time: list[list[int]] = []
+        self.approximate_item_local_time_with_children: list[list[int]] = []
+        self.outsourced_item_time_with_children: list[list[int]] = []
         self.lb_Cmax: int = 0
         self.ub_Cmax: int = 0 
         self.lb_cost: int = 0

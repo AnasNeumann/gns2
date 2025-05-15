@@ -243,23 +243,25 @@ def schedule_operation(graph: GraphInstance, instance: Instance, operation_id: i
     if not instance.is_design[p][o]:
         for child in graph.descendants[p][e]:
             graph.inc_item(graph.items_i2g[p][child], [('parents_physical_time', -estimated_processing_time)])
-    return operation_end, scheduling_time
+    return operation_end, scheduling_time, estimated_processing_time
 
 # Also schedule other resources if the operation is simultaneous
 def schedule_other_resources_if_simultaneous(instance: Instance, graph: GraphInstance, required_types_of_resources: list[list[list[int]]], required_types_of_materials:list[list[list[int]]], operation_id: int, resource_id: int, p: int, o: int, sync_time: int, operation_end: int):
     not_RT: int = graph.resource_family[graph.resources_g2i[resource_id]]
+    total_ex_time = 0
     for rt in required_types_of_resources[p][o] + required_types_of_materials[p][o]:
         if rt != not_RT:
             found_suitable_r: bool = True 
             for r in graph.res_by_types[rt]:
                 if instance.finite_capacity[r]:
-                    other_resource_id     = graph.resources_i2g[r]
-                    res_ready_time        = graph.resource(other_resource_id, 'available_time') + graph.need_for_resource(operation_id, other_resource_id, 'setup_time')
-                    scaled_res_ready_time = next_possible_time(instance, res_ready_time, p, o)
+                    other_resource_id       = graph.resources_i2g[r]
+                    res_ready_time          = graph.resource(other_resource_id, 'available_time') + graph.need_for_resource(operation_id, other_resource_id, 'setup_time')
+                    scaled_res_ready_time   = next_possible_time(instance, res_ready_time, p, o)
                     if scaled_res_ready_time <= sync_time:
-                        found_suitable_r = True
-                        op_end, _        = schedule_operation(graph, instance, operation_id, other_resource_id, required_types_of_resources, sync_time)
-                        operation_end    = max(operation_end, op_end)
+                        found_suitable_r   = True
+                        op_end, _, ex_time = schedule_operation(graph, instance, operation_id, other_resource_id, required_types_of_resources, sync_time)
+                        operation_end      = max(operation_end, op_end)
+                        total_ex_time     += ex_time
                         break
                 else:
                     found_suitable_r = True
@@ -267,7 +269,7 @@ def schedule_other_resources_if_simultaneous(instance: Instance, graph: GraphIns
                     break
             if not found_suitable_r:
                 print("ERROR!")
-    return operation_end
+    return operation_end, total_ex_time
 
 # Try to open next operations after finishing using a resource or material
 def try_to_open_next_operations(Q: Queue, graph: GraphInstance, instance: Instance, previous_operations: list[list[list[int]]], next_operations: list[list[list[int]]], operation_id: int): 
@@ -365,18 +367,19 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
 def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
-    graph, lb_cmax, lb_cost, previous_operations, next_operations, _, _ = translate(i=instance, device=device)
+    graph, previous_operations, next_operations = translate(i=instance, device=device)
     required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
     alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
     if train:
-        REPLAY_MEMORY.init_tree(alpha, lb_cmax, lb_cost)
+        REPLAY_MEMORY.init_tree(alpha, graph.lb_Cmax, graph.lb_cost, graph.ub_Cmax, graph.ub_cost)
         _LOCAL_ACTION_TREE: Action = None
         _last_action: Action = None
     current_cmax = 0
     current_cost = 0
-    DEBUG_PRINT(f"Init Cmax: {lb_cmax} - Init cost: {lb_cost}$")
+    DEBUG_PRINT(f"Init Cmax: {graph.lb_Cmax}->{graph.ub_Cmax} - Init cost: {graph.lb_cost}$ - Max cost: {graph.ub_cost}$")
     Q = init_queue(instance, graph)
     while not Q.done():
+        workload_removed: int = 0
         poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
         DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
         state: State = graph.to_state(device=device)
@@ -396,8 +399,10 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                 current_cmax = max(current_cmax, _end_date)
                 current_cost = current_cost + _price
                 Q.remove_item(item_id)
+                workload_removed = graph.outsourced_item_time_with_children[p][e] - graph.approximate_item_local_time_with_children[p][e]
                 DEBUG_PRINT(f"Outsourcing item {item_id} -> ({p},{e}) [start={_outsourcing_time}, end={_end_date}]...")
             else:
+                workload_removed = graph.approximate_item_local_time[p][e] - instance.outsourcing_time[p][e]
                 Q.remove_item(item_id)
                 graph.update_item(item_id, [('outsourced', NO), ('can_be_outsourced', NO)])
                 DEBUG_PRINT(f"Producing item {item_id} -> ({p},{e}) locally...")
@@ -407,10 +412,11 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
             value = resource_id
             p, o = graph.operations_g2i[operation_id]
             DEBUG_PRINT(f"Scheduling: operation {operation_id} -> ({p},{o}) on resource {graph.resources_g2i[resource_id]} at time {execution_times[idx]}...")     
-            _operation_end, _actual_scheduling_time = schedule_operation(graph, instance, operation_id, resource_id, required_types_of_resources, execution_times[idx])
+            _operation_end, _actual_scheduling_time, workload_removed = schedule_operation(graph, instance, operation_id, resource_id, required_types_of_resources, execution_times[idx])
             if instance.simultaneous[p][o]:
                 DEBUG_PRINT("\t >> Simulatenous...")
-                _operation_end = schedule_other_resources_if_simultaneous(instance, graph, required_types_of_resources, required_types_of_materials, operation_id, resource_id, p, o, _actual_scheduling_time, _operation_end)
+                _operation_end, total_execution_time = schedule_other_resources_if_simultaneous(instance, graph, required_types_of_resources, required_types_of_materials, operation_id, resource_id, p, o, _actual_scheduling_time, _operation_end)
+                workload_removed += total_execution_time
             if graph.is_operation_complete(operation_id):
                 Q.remove_operation(operation_id)
                 try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
@@ -428,7 +434,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                 try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
             current_cmax = max(current_cmax, execution_times[idx])
         if train:
-            _last_action = Action(idx, actions_type, target, value, state_before_action if _LOCAL_ACTION_TREE is not None else None)
+            _last_action = Action(idx, actions_type, target, value, workload_removed, state_before_action if _LOCAL_ACTION_TREE is not None else None)
             if _LOCAL_ACTION_TREE is None:
                 _LOCAL_ACTION_TREE = _last_action
     if train:

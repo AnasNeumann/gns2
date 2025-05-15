@@ -36,8 +36,8 @@ DROPOUT   = 0.1
 HEADS     = 4
 ACTOR_DIM = 64
 
-W_FINAL  = 0.8  # weight final values versus by-step change in reward computation 
-STD_RATE = 0.1  # standardization rate in reward computation
+W_FINAL  = 0.85  # weight final values versus by-step change in reward computation 
+STD_RATE = 0.15  # standardization rate in reward computation
 
 TRAINSET = 0
 TESTSET  = 1

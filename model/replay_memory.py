@@ -11,6 +11,14 @@ __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
 
+class InstanceConfiguration:
+    def __init__(self, alpha: Tensor, lb_Cmax: int, lb_cost: int, ub_Cmax: int, ub_cost: int):
+        self.alpha: Tensor = alpha
+        self.lb_Cmax: int = lb_Cmax
+        self.lb_cost: int = lb_cost
+        self.ub_Cmax: int = ub_Cmax
+        self.ub_cost: int = ub_cost
+
 class HistoricalState:
     def __init__(self, tree, state: State, possible_actions: list, end: int, cost: int, parent_action=None):
         self.state: State = state
@@ -24,11 +32,12 @@ class HistoricalState:
             self.parent_action.next_state = self
 
 class Action:
-    def __init__(self, id: int, action_type: int, target: int, value: int, parent_state: HistoricalState=None):
+    def __init__(self, id: int, action_type: int, target: int, value: int, workload_removed: int=0, parent_state: HistoricalState=None):
         self.id: int = id
         self.action_type: int = action_type
         self.target: int = target
         self.value: int = value
+        self.workload_removed: int = 0
         self.parent_state: HistoricalState = parent_state
         self.next_state: HistoricalState = None
         self.reward: Tensor = None
@@ -37,23 +46,36 @@ class Action:
 
     def same(self, a) -> bool:
         a: Action
-        return self.parent_state == a.parent_state and self.action_type == a.action_type and self.target == a.target and self.value == a.value
+        return self.action_type == a.action_type and self.target == a.target and self.value == a.value
     
+    # reward standardizator = STD_RATE * (α * ub_Cmax + (1-α) * ub_cost)
+    def std_reward(self, conf: InstanceConfiguration) -> float:
+        return ((conf.alpha * conf.ub_Cmax + (1-conf.alpha) * conf.ub_cost) * STD_RATE)
+    
+    # final reward = α * (Cmax - lb_Cmax) + (1-α) * (cost - lb_cost) / standardizator
+    def final_reward(self, final_makespan: int, final_cost: int, std_reward: float, conf: InstanceConfiguration) -> float:
+        makespan_final_expension: int = final_makespan - conf.lb_Cmax
+        cost_final_expension: int     = final_cost - conf.lb_cost
+        return (conf.alpha * makespan_final_expension + (1-conf.alpha) * cost_final_expension) / std_reward
+
+    # step by step reward = α * (end_new - end_old - workload_change) + (1-α) * (cost_new - cost_old) / standardizator
+    def step_by_step_reward(self, std_reward: float,  conf: InstanceConfiguration) -> float:
+        end_before: int      = self.parent_state.end if self.parent_state is not None else 0
+        cost_before: int     = self.parent_state.cost if self.parent_state is not None else 0
+        temporal_change: int = self.next_state - end_before - self.workload_removed
+        if self.action_type == OUTSOURCING and self.value == YES:
+            cost_change: int = self.next_state.cost - cost_before
+            return (conf.alpha * temporal_change + (1-conf.alpha) * cost_change) / std_reward
+        return temporal_change / std_reward
+
     # Compute the final reward
-    def compute_reward(self, a: float, init_cmax: int, init_cost: int, final_makespan: int, final_cost: int=-1, device: str="") -> Tensor:
-        _d: float            = STD_RATE*(a*init_cmax + (1-a)*init_cost)
-        end_before: int      = self.parent_state.end if self.parent_state is not None else init_cmax
-        makespan_part: float =  (1.0-W_FINAL) * (self.next_state.end - end_before) + W_FINAL * (final_makespan - init_cmax)
-        if self.action_type == OUTSOURCING:
-            cost_before: int = self.parent_state.cost if self.parent_state is not None else init_cost
-            cost_part: float = (1.0-W_FINAL) * (self.next_state.cost - cost_before) + W_FINAL * (final_cost - init_cost)
-            _r =  -1.0 * (a*makespan_part + (1-a)*cost_part)/_d
-            with torch.no_grad():
-                self.reward = torch.tensor([_r], dtype=torch.float32, device=device)
-        else:
-            _r = -1.0 * (a*makespan_part)/_d
-            with torch.no_grad():
-                self.reward = torch.tensor([_r], dtype=torch.float32, device=device)
+    def compute_reward(self, conf: InstanceConfiguration, final_makespan: int, final_cost: int=-1, device: str="") -> Tensor:
+        r_std: float          = self.std_reward(conf=conf)
+        r_final: float        = self.final_reward(final_makespan=final_makespan, final_cost=final_cost, std_reward=r_std, conf=conf)
+        r_step_by_step: float = self.step_by_step_reward(std_reward=r_std, conf=conf)
+        reward: float         = W_FINAL * r_final + (1-W_FINAL) * r_step_by_step
+        with torch.no_grad():
+            self.reward = torch.tensor([-1.0 * reward], dtype=torch.float32, device=device)
         return self.reward
 
 class Tree:
@@ -62,22 +84,18 @@ class Tree:
     """
     def __init__(self, global_memory, instance_id: str):
         self.instance_id: str = instance_id
-        self.alpha: Tensor = None
-        self.init_makesan: int = -1
-        self.init_cost: int = -1
+        self.conf: InstanceConfiguration = None
         self.init_state: HistoricalState = None
         self.size: int = 0
         self.global_memory: Memory = global_memory
 
-    def init_tree(self, alpha: Tensor, init_makesan: int, init_cost: int):
-        if self.alpha == None:
-            self.init_makesan = init_makesan
-            self.init_cost = init_cost
-            self.alpha = alpha
+    def init_tree(self, alpha: Tensor, lb_Cmax: int, lb_cost: int, ub_Cmax: int, ub_cost: int):
+        if self.conf == None:
+            self.conf = InstanceConfiguration(alpha=alpha, lb_Cmax=lb_Cmax, lb_cost=lb_cost, ub_Cmax=ub_Cmax, ub_cost=ub_cost)
 
     # Compute all rewards of a new found branch of actions and states
     def compute_all_rewards(self, action: Action, final_makespan: int, final_cost: int=-1, device: str="") -> None:
-        action.compute_reward(a=self.alpha.item(), final_cost=final_cost, final_makespan=final_makespan, init_cmax=self.init_makesan, init_cost=self.init_cost, device=device)
+        action.compute_reward(conf=self.conf, final_cost=final_cost, final_makespan=final_makespan, device=device)
         for _next in action.next_state.actions_tested:
             self.compute_all_rewards(action=_next, final_cost=final_cost, final_makespan=final_makespan, device=device)
 

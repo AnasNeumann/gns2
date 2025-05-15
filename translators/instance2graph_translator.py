@@ -10,7 +10,7 @@ __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "Apache 2.0 License"
 
-def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, estimated_start: int, must_be_outsourced: bool=False):
+def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, external_start: int, internal_start: int, must_be_outsourced: bool=False):
     design_mean_time, physical_mean_time = i.item_processing_time(p, e, total_load=False)
     childrens = graph.descendants[p][e]
     children_time = 0
@@ -19,7 +19,7 @@ def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, es
         cdt = graph.approximate_design_load[p][children]
         cpt = graph.approximate_physical_load[p][children]
         children_time += (cdt+cpt)
-        for child_op in i.loop_item_operations(p, e=children):
+        for _ in i.loop_item_operations(p, e=children):
             childrens_ops += 1
     parents_physical_time = 0
     parent_physical_ops = 0
@@ -92,20 +92,28 @@ def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, es
                         quantity_needed = float(i.quantity_needed[r][p][o])))
                     if not i.is_design[p][o]:
                         pm_ids.append((op_id, graph.materials_i2g[r]))
-    _base_design_end = estimated_start + design_mean_time
-    estimated_start_child = estimated_start if i.external[p][e] else _base_design_end
-    estimated_childrend_end = _base_design_end
-    estimated_children_cost = 0
+    _base_design_end = internal_start + design_mean_time
+    external_start_child = external_start if i.external[p][e] else _base_design_end
+    least_childrend_end = _base_design_end
+    max_childrend_end = _base_design_end
+    least_children_cost = 0
+    max_children_cost = 0
     for children in graph.direct_children[p][e]:
-        child_id, estimated_end_child, child_cost = build_item(i, graph, p, e=children, head=False, estimated_start=estimated_start_child, must_be_outsourced=must_be_outsourced)
+        child_id, least_end_child, max_end_child, least_child_cost, max_child_cost = build_item(i, graph, p, e=children, head=False, internal_start=external_start_child, external_start=_base_design_end, must_be_outsourced=must_be_outsourced)
         graph.add_item_assembly(item_id, child_id)
-        estimated_childrend_end = max(estimated_childrend_end, estimated_end_child)
-        estimated_children_cost += child_cost
-    external_end = estimated_start + i.outsourcing_time[p][e]
-    internal_end = estimated_childrend_end + physical_mean_time
-    estimated_end = external_end if must_be_outsourced else min(external_end, internal_end) if i.external[p][e] else internal_end
-    mandatory_cost = estimated_children_cost + (i.external_cost[p][e] if must_be_outsourced else 0)
-    return item_id, estimated_end, mandatory_cost
+        least_childrend_end = max(least_childrend_end, least_end_child)
+        max_childrend_end = max(max_childrend_end, max_end_child)
+        least_children_cost += least_child_cost
+        max_children_cost += max_child_cost
+    least_external_end = least_childrend_end + i.outsourcing_time[p][e]
+    max_external_end = max_childrend_end + i.outsourcing_time[p][e]
+    least_internal_end = least_children_cost + physical_mean_time
+    max_internal_end = max_children_cost + physical_mean_time
+    least_end = least_external_end if must_be_outsourced else min(least_external_end, least_internal_end) if i.external[p][e] else least_internal_end
+    max_end   = max_external_end if must_be_outsourced else max(max_external_end, max_internal_end) if i.external[p][e] else max_internal_end
+    least_cost = least_children_cost + (i.external_cost[p][e] if must_be_outsourced else 0)
+    max_cost = max_child_cost + (i.external_cost[p][e] if i.external[p][e] else 0)
+    return item_id, least_end, max_end, least_cost, max_cost
 
 def build_precedence(i: Instance, graph: GraphInstance):
     for p in i.loop_projects():
@@ -144,8 +152,11 @@ def build_direct_access_objects(i: Instance, graph: GraphInstance):
         graph.approximate_physical_load.append([])  
         graph.operation_resource_time.append([])
         graph.item_of_operations.append([])
+        graph.approximate_item_local_time.append([])
         for e in i.loop_items(p):
             adl, apl = i.item_processing_time(p, e, total_load=True)
+            mean_adl, mean_apl = i.item_processing_time(p, e, total_load=False)
+            graph.approximate_item_local_time[p].append(mean_adl + mean_apl)
             graph.approximate_design_load[p].append(adl)
             graph.approximate_physical_load[p].append(apl)
             graph.direct_parent[p].append(i.get_direct_parent(p, e))
@@ -161,6 +172,17 @@ def build_direct_access_objects(i: Instance, graph: GraphInstance):
                 graph.operation_resource_time[p][o].append(i.operation_resource_time(p, o, rt, max_load=True))
     for r in i.loop_resources():
         graph.resource_family.append(i.get_resource_familly(r))
+    for p in i.loop_projects():
+        graph.outsourced_item_time_with_children.append([])
+        graph.approximate_item_local_time_with_children.append([])
+        for e in i.loop_items(p):
+            external_t: int = i.outsourcing_time[p][e]
+            internal_t: int = graph.approximate_item_local_time[p][e]
+            for d in graph.descendants[p][e]:
+                external_t += i.outsourcing_time[p][d]
+                internal_t += graph.approximate_item_local_time[p][d]
+            graph.outsourced_item_time_with_children[p].append(external_t)
+            graph.approximate_item_local_time_with_children[p].append(internal_t)
 
 def rec_lower_bound(i: Instance, graph: GraphInstance, p: int, o: int, start: int, next_operations: list[list[list[int]]]):
     graph.update_operation(graph.operations_i2g[p][o], [('lb', start)], maxx=True)
@@ -198,18 +220,15 @@ def translate(i: Instance, device: str):
                     remaining_demand = float(remaining_quantity_needed)))
     graph.resources_i2g = graph.build_i2g_1D(graph.resources_g2i, i.nb_resources)
     graph.materials_i2g = graph.build_i2g_1D(graph.materials_g2i, i.nb_resources)
-    Cmax_lower_bound = 0
-    cost_lower_bound = 0
     for p in i.loop_projects():
-        _, project_end, project_cost = build_item(i, graph, p, e=i.project_head(p), head=True, estimated_start=0, must_be_outsourced=False)
-        Cmax_lower_bound = max(Cmax_lower_bound, project_end)
-        cost_lower_bound += project_cost
+        _, project_lb_end, project_ub_end, project_cost = build_item(i, graph, p, e=i.project_head(p), head=True, external_start=0, internal_start=0, must_be_outsourced=False)
+        graph.lb_Cmax = max(graph.lb_Cmax, project_lb_end)
+        graph.ub_Cmax = max(graph.ub_Cmax, project_ub_end)
+        graph.lb_cost += project_cost
     graph.operations_i2g = graph.build_i2g_2D(graph.operations_g2i)
     graph.items_i2g = graph.build_i2g_2D(graph.items_g2i)
     graph.add_dummy_item(device=device)
     build_precedence(i, graph)
     previous_operations, next_operations = i.build_next_and_previous_operations()
     build_lower_bounds(i, graph, next_operations)
-    related_items: Tensor = graph.flatten_related_items(device)
-    parent_items: Tensor = graph.flatten_parents(device)
-    return graph, Cmax_lower_bound, cost_lower_bound, previous_operations, next_operations, related_items, parent_items
+    return graph, previous_operations, next_operations
