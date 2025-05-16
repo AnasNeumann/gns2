@@ -104,7 +104,7 @@ class Agent:
         loss_accum: float = 0
         for action in actions:
             history: HistoricalState = action.parent_state
-            _alpha: Tensor           = history.tree.alpha
+            _alpha: Tensor           = history.tree.conf.alpha
             Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _alpha) # Qπ(s,a)
             Q_sa: Tensor             = Q_logits[action.id]
             done: bool               = len(action.next_state.possible_actions) == 0

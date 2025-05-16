@@ -106,13 +106,13 @@ def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, ex
         least_children_cost += least_child_cost
         max_children_cost += max_child_cost
     least_external_end = least_childrend_end + i.outsourcing_time[p][e]
-    max_external_end = max_childrend_end + i.outsourcing_time[p][e]
+    max_external_end   = max_childrend_end + i.outsourcing_time[p][e]
     least_internal_end = least_children_cost + physical_mean_time
-    max_internal_end = max_children_cost + physical_mean_time
-    least_end = least_external_end if must_be_outsourced else min(least_external_end, least_internal_end) if i.external[p][e] else least_internal_end
-    max_end   = max_external_end if must_be_outsourced else max(max_external_end, max_internal_end) if i.external[p][e] else max_internal_end
-    least_cost = least_children_cost + (i.external_cost[p][e] if must_be_outsourced else 0)
-    max_cost = max_child_cost + (i.external_cost[p][e] if i.external[p][e] else 0)
+    max_internal_end   = max_children_cost + physical_mean_time
+    least_end          = least_external_end if must_be_outsourced else min(least_external_end, least_internal_end) if i.external[p][e] else least_internal_end
+    max_end            = max_external_end if must_be_outsourced else max(max_external_end, max_internal_end) if i.external[p][e] else max_internal_end
+    least_cost         = least_children_cost + (i.external_cost[p][e] if must_be_outsourced else 0)
+    max_cost           = max_children_cost + (i.external_cost[p][e] if i.external[p][e] else 0)
     return item_id, least_end, max_end, least_cost, max_cost
 
 def build_precedence(i: Instance, graph: GraphInstance):
@@ -221,10 +221,11 @@ def translate(i: Instance, device: str):
     graph.resources_i2g = graph.build_i2g_1D(graph.resources_g2i, i.nb_resources)
     graph.materials_i2g = graph.build_i2g_1D(graph.materials_g2i, i.nb_resources)
     for p in i.loop_projects():
-        _, project_lb_end, project_ub_end, project_cost = build_item(i, graph, p, e=i.project_head(p), head=True, external_start=0, internal_start=0, must_be_outsourced=False)
+        _, project_lb_end, project_ub_end, project_lb_cost, project_ub_cost = build_item(i, graph, p, e=i.project_head(p), head=True, external_start=0, internal_start=0, must_be_outsourced=False)
         graph.lb_Cmax = max(graph.lb_Cmax, project_lb_end)
         graph.ub_Cmax = max(graph.ub_Cmax, project_ub_end)
-        graph.lb_cost += project_cost
+        graph.lb_cost += project_lb_cost
+        graph.ub_cost += project_ub_cost
     graph.operations_i2g = graph.build_i2g_2D(graph.operations_g2i)
     graph.items_i2g = graph.build_i2g_2D(graph.items_g2i)
     graph.add_dummy_item(device=device)

@@ -62,7 +62,7 @@ class Action:
     def step_by_step_reward(self, std_reward: float,  conf: InstanceConfiguration) -> float:
         end_before: int      = self.parent_state.end if self.parent_state is not None else 0
         cost_before: int     = self.parent_state.cost if self.parent_state is not None else 0
-        temporal_change: int = self.next_state - end_before - self.workload_removed
+        temporal_change: int = self.next_state.end - end_before - self.workload_removed
         if self.action_type == OUTSOURCING and self.value == YES:
             cost_change: int = self.next_state.cost - cost_before
             return (conf.alpha * temporal_change + (1-conf.alpha) * cost_change) / std_reward
