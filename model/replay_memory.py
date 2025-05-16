@@ -2,7 +2,7 @@ from conf import *
 
 import torch
 from torch import Tensor
-from model.gnn import State
+from copy import deepcopy
 
 # ########################################################
 # =*= A REPLAY MEMORY DESTINGUISHING BETWEEN INSTANCES =*=
@@ -20,8 +20,8 @@ class InstanceConfiguration:
         self.ub_cost: int = ub_cost
 
 class HistoricalState:
-    def __init__(self, tree, state: State, possible_actions: list, end: int, cost: int, parent_action=None):
-        self.state: State = state
+    def __init__(self, tree, state, possible_actions: list, end: int, cost: int, parent_action=None):
+        self.state = state
         self.possible_actions: list = possible_actions
         self.actions_tested: list[Action] = []
         self.parent_action: Action = parent_action
@@ -30,6 +30,12 @@ class HistoricalState:
         self.tree: Tree = tree
         if self.parent_action is not None:
             self.parent_action.next_state = self
+
+    def clone(self, parent_action=None):
+        s: HistoricalState = HistoricalState(self.tree, self.state, deepcopy(self.possible_actions), self.end, self.cost, parent_action)
+        for a in self.actions_tested:
+            a: Action
+            s.actions_tested.append(a.clone(s))
 
 class Action:
     def __init__(self, id: int, action_type: int, target: int, value: int, workload_removed: int=0, parent_state: HistoricalState=None):
@@ -45,6 +51,10 @@ class Action:
         if self.parent_state is not None:
             self.parent_state.actions_tested.append(self)
 
+    def clone(self, parent_state: HistoricalState=None):
+        a: Action = Action(self.id, self.action_type, self.target, self.value, self.workload_removed, parent_state)
+        a.next_state = self.next_state.clone(a)
+        
     def same(self, a) -> bool:
         a: Action
         return self.action_type == a.action_type and self.target == a.target and self.value == a.value

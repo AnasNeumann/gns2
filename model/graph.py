@@ -8,6 +8,8 @@ from tools.tensors import features2tensor, id2tensor
 from model.instance import Instance
 from conf import YES, NO
 from model.queue import Queue
+from copy import deepcopy
+from model.replay_memory import Action
 
 # ############################################################
 # =*= HYPER-GRAPH DATA STRUCTURES & MANIPULATION FUNCTIONS =*=
@@ -261,7 +263,7 @@ class GraphInstance():
         self.next_operations: list[list[list[int]]] = []
 
         self.Q: Queue = Queue()
-        self.actions: list = []
+        self.actions: list[Action] = []
         self.current_cmax: int = 0
         self.current_cost: int = 0
         self.remaining_types_of_resources: list[list[list[int]]] = []
@@ -270,6 +272,55 @@ class GraphInstance():
         self.graph: HeteroData = HeteroData()
         self.device: str = device
         self.graph.to(device)
+
+    def clone(self):
+        g: GraphInstance = GraphInstance(self.device)
+        g.operations_g2i                            = self.operations_g2i
+        g.items_g2i                                 = self.items_g2i
+        g.resources_g2i                             = self.resources_g2i
+        g.materials_g2i                             = self.materials_g2i
+        g.operations_i2g                            = self.operations_i2g
+        g.items_i2g                                 = self.items_i2g
+        g.resources_i2g                             = self.resources_i2g
+        g.materials_i2g                             = self.materials_i2g
+        g.current_operation_type                    = deepcopy(self.current_operation_type)
+        g.current_design_value                      = deepcopy(self.current_design_value)
+        g.project_heads                             = self.project_heads
+        g.res_by_types                              = self.res_by_types
+        g.ancesors                                  = self.ancesors
+        g.direct_children                           = self.direct_children
+        g.descendants                               = self.descendants
+        g.direct_parent                             = self.direct_parent
+        g.last_design_operations                    = self.last_design_operations
+        g.first_physical_operations                 = self.first_physical_operations
+        g.item_of_operations                        = self.item_of_operations
+        g.resource_family                           = self.resource_family
+        g.operation_resource_time                   = self.operation_resource_time
+        g.approximate_design_load                   = self.approximate_design_load
+        g.approximate_physical_load                 = self.approximate_physical_load
+        g.approximate_item_local_time               = self.approximate_item_local_time
+        g.approximate_item_local_time_with_children = self.approximate_item_local_time_with_children
+        g.outsourced_item_time_with_children        = self.outsourced_item_time_with_children
+        g.lb_Cmax                                   = self.lb_Cmax
+        g.ub_Cmax                                   = self.ub_Cmax
+        g.lb_cost                                   = self.lb_cost
+        g.ub_cost                                   = self.ub_cost
+        g.alpha                                     = self.alpha
+        g.previous_operations                       = self.previous_operations
+        g.next_operations                           = self.next_operations
+        g.device                                    = self.device
+        g.current_cmax                              = self.current_cmax
+        g.current_cost                              = self.current_cost
+        g.remaining_types_of_resources              = deepcopy(self.remaining_types_of_resources)
+        g.remaining_types_of_materials              = deepcopy(self.remaining_types_of_materials)
+        g.Q                                         = self.Q.clone()
+        g.graph                                     = self.graph.clone()
+        g.graph.to(g.device)
+        _branch: Action = self.actions[0].clone()
+        g.actions.append(_branch)
+        while _branch.next_state.actions_tested:
+            _branch = _branch.next_state.actions_tested[0]
+            g.actions.append(_branch)
 
     def get_last_action(self):
         return self.actions[-1] if len(self.actions) > 0 else None

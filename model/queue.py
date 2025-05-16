@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 # ##########################################
 # =*= A QUEUE OF TIME AND ACTION TO TEST =*=
 # ##########################################
@@ -13,6 +15,12 @@ class Queue:
     def __init__(self):
         self.operation_queue: list[int] = []
         self.item_queue: list[int] = []
+
+    def clone(self):
+        q: Queue = Queue()
+        q.operation_queue = deepcopy(self.operation_queue)
+        q.item_queue(self.item_queue)
+        return q
 
     def done(self) -> bool:
         return len(self.operation_queue) == 0 and len(self.item_queue) == 0 # and len(self.item_queue) == 0
