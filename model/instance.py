@@ -126,22 +126,22 @@ class Instance:
             return max(time_rt)
         return sum(time_rt)/len(time_rt) if time_rt else 0
 
-    def operation_time(self, p: int, o: int, total_load: bool):
+    def operation_time(self, p: int, o: int, total_load:bool=False, max_load:bool=False):
         times = []
         for rt in self.required_rt(p, o):
-                times.append(self.operation_resource_time(p, o, rt, max_load=total_load))
+                times.append(self.operation_resource_time(p, o, rt, max_load=total_load or max_load))
         if total_load:
             return sum(times)
         return max(times)
 
-    def item_processing_time(self, p: int, e: int, total_load:bool):
+    def item_processing_time(self, p: int, e: int, total_load:bool=False, max_load:bool=False):
         design_time = 0
         physical_time = 0
         for o in self.loop_item_operations(p,e):
             if self.is_design[p][o]:
-                design_time += self.operation_time(p,o, total_load=total_load)
+                design_time += self.operation_time(p,o, total_load=total_load, max_load=max_load)
             else:
-                physical_time += self.operation_time(p,o, total_load=total_load)
+                physical_time += self.operation_time(p,o, total_load=total_load, max_load=max_load)
         return design_time, physical_time
 
     def require(self, p: int, o: int, r: int):
