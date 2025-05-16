@@ -1,19 +1,19 @@
 SOLVING_REPETITIONS = 10  # solving repetition in inference mode
 
-EPS_START       = 0.99  # starting value of epsilon
-EPS_END         = 0.005 # final value of epsilon
-EPS_DECAY_RATE  = 0.33  # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
-MEMORY_CAPACITY = 60000 # number of transitions in the replay memory
-GAMMA           = 0.3   # discount factor
-DELTA           = 2.0   # Huber loss "threshold" parameter (distinguishing between small and big errors)
-TAU             = 0.003 # update rate of the target network
-LEARNING_RATE   = 2e-4  # learning rate for the policy model
-BATCH_SIZE      = 64    # batch size at training time
-EPISODES        = 10000 # number of training episodes
-SWITCH_INSTANCE = 100   # number of episodes before switching instance
-SAVING_ITRS     = 100   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
-MAX_GRAD_NORM   = 5.0   # gradient normalization for really deep networks
-TRAINING_ITRS   = 5     # number of solving episodes before training the agents!
+EPS_START       = 0.99   # starting value of epsilon
+EPS_END         = 0.005  # final value of epsilon
+EPS_DECAY_RATE  = 0.33   # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
+MEMORY_CAPACITY = 100000 # number of transitions in the replay memory
+GAMMA           = 0.3    # discount factor
+DELTA           = 2.0    # Huber loss "threshold" parameter (distinguishing between small and big errors)
+TAU             = 0.003  # update rate of the target network
+LEARNING_RATE   = 2e-4   # learning rate for the policy model
+BATCH_SIZE      = 64     # batch size at training time
+EPISODES        = 5000   # number of training episodes
+SWITCH_INSTANCE = 100    # number of episodes before switching instance
+SAVING_ITRS     = 100    # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
+MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks
+TRAINING_ITRS   = 5      # number of solving episodes before training the agents!
 
 YES = 1.0 # feature value for YES 
 NO  = 0.0 # feature value for NO
