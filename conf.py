@@ -1,5 +1,3 @@
-SOLVING_REPETITIONS = 10  # solving repetition in inference mode
-
 EPS_START       = 0.99   # starting value of epsilon
 EPS_END         = 0.005  # final value of epsilon
 EPS_DECAY_RATE  = 0.33   # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
