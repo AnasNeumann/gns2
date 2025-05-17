@@ -7,9 +7,7 @@ from tools.common import num_feature
 from tools.tensors import features2tensor, id2tensor
 from model.instance import Instance
 from conf import YES, NO
-from model.queue import Queue
 from copy import deepcopy
-from model.replay_memory import Action
 
 # ############################################################
 # =*= HYPER-GRAPH DATA STRUCTURES & MANIPULATION FUNCTIONS =*=
@@ -253,19 +251,9 @@ class GraphInstance():
         self.approximate_item_local_time_with_children: list[list[int]] = []
         self.outsourced_item_time_with_children: list[list[int]] = []
 
-        self.lb_Cmax: int = 0
-        self.ub_Cmax: int = 0 
-        self.lb_cost: int = 0
-        self.ub_cost: int = 0
-        self.alpha: Tensor = None
-
         self.previous_operations: list[list[list[int]]] = []
         self.next_operations: list[list[list[int]]] = []
 
-        self.Q: Queue = Queue()
-        self.actions: list[Action] = []
-        self.current_cmax: int = 0
-        self.current_cost: int = 0
         self.remaining_types_of_resources: list[list[list[int]]] = []
         self.remaining_types_of_materials: list[list[list[int]]] = []
 
@@ -301,42 +289,13 @@ class GraphInstance():
         g.approximate_item_local_time               = self.approximate_item_local_time
         g.approximate_item_local_time_with_children = self.approximate_item_local_time_with_children
         g.outsourced_item_time_with_children        = self.outsourced_item_time_with_children
-        g.lb_Cmax                                   = self.lb_Cmax
-        g.ub_Cmax                                   = self.ub_Cmax
-        g.lb_cost                                   = self.lb_cost
-        g.ub_cost                                   = self.ub_cost
-        g.alpha                                     = self.alpha
         g.previous_operations                       = self.previous_operations
         g.next_operations                           = self.next_operations
         g.device                                    = self.device
-        g.current_cmax                              = self.current_cmax
-        g.current_cost                              = self.current_cost
         g.remaining_types_of_resources              = deepcopy(self.remaining_types_of_resources)
         g.remaining_types_of_materials              = deepcopy(self.remaining_types_of_materials)
-        g.Q                                         = self.Q.clone()
         g.graph                                     = self.graph.clone()
         g.graph.to(g.device)
-        _branch: Action = self.actions[0].clone()
-        g.actions.append(_branch)
-        while _branch.next_state.actions_tested:
-            _branch = _branch.next_state.actions_tested[0]
-            g.actions.append(_branch)
-
-    def get_last_action(self):
-        return self.actions[-1] if len(self.actions) > 0 else None
-    
-    def get_base_action(self):
-        return self.actions[0] if len(self.actions) > 0 else None
-    
-    def is_first_state(self):
-        return len(self.actions) == 0
-        
-    # Init the task and time queue
-    def init_queue(self, i: Instance):
-        for item_id in self.project_heads:
-            p, head = self.items_g2i[item_id]
-            for o in i.first_operations(p, head):
-                self.Q.add_operation(self.operations_i2g[p][o])
 
     def add_node(self, type: str, features: Tensor):
         self.graph[type].x = torch.cat([self.graph[type].x, features], dim=0) if type in self.graph.node_types else features

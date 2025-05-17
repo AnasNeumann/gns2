@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from torch.nn import Module
 from torch.optim import Adam
 
-from model.fast_gnn import *
+from model.gnn import *
 from model.replay_memory import Memory, Action, HistoricalState
 from conf import *
 import torch.nn.functional as F
