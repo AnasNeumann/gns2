@@ -20,7 +20,6 @@ class Environment:
         self.action_type: int = -1
         self.action_id: int = -1
         self.execution_time: int = -1
-        self.past_envs: list[Environment] = []
         self.lb_Cmax: int = lb_Cmax
         self.ub_Cmax: int = ub_Cmax
         self.lb_cost: int = lb_cost
@@ -30,7 +29,12 @@ class Environment:
         self.previous_actions: list[Action] = []
         self.current_cmax: int = 0
         self.current_cost: int = 0
-    
+
+    def obj_value(self):
+        cmax_weight = int(100 * self.alpha.item())
+        cost_weight = 100 - cmax_weight
+        return self.current_cmax*cmax_weight + self.current_cost*cost_weight
+
     def clone(self):
         env: Environment = Environment(self.i, self.graph.clone(), self.lb_Cmax, self.ub_Cmax, self.lb_cost, self.ub_cost, self.alpha) 
         env.current_cmax     = self.current_cmax
@@ -40,8 +44,6 @@ class Environment:
         env.action_id        = self.action_id
         env.execution_time   = self.execution_time
         env.Q                = self.Q.clone()
-        env.past_envs        = self.past_envs.copy()
-        env.past_envs.append(self)
         if self.previous_actions:
             _branch: Action = self.previous_actions[0].clone()
             env.previous_actions.append(_branch)

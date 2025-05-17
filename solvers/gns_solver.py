@@ -165,7 +165,12 @@ def search_and_select_next_action(env: Environment, agents: Agents, greedy: bool
     poss_actions, actions_type, execution_times = get_feasible_actions(env)
     DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
     features: State = env.graph.to_state(device=device)
-    idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
+    if env.action_id >= 0: # already tried before (forbidden action)
+        del poss_actions[env.action_id]
+        del execution_times[env.action_id]
+        idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
+    else: 
+        idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
     env.action_found(poss_actions, actions_type, idx, execution_times[idx])
     return features
 
@@ -402,7 +407,7 @@ def execute_one_decision(env: Environment, features: State, train: bool, REPLAY_
         env.previous_actions.append(Action(env.action_id, env.action_type, target, value, workload_removed, state_before_action if not is_first_env else None))
 
 # Main function to solve an instance from sratch 
-def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
+def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False) -> Environment:
     global DEBUG_PRINT
     DEBUG_PRINT = debug_printer(debug)
     graph, lb_Cmax, ub_Cmax, lb_cost, ub_cost = translate(i=instance, device=device)
@@ -411,14 +416,28 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
         REPLAY_MEMORY.init_tree(env.alpha, env.lb_Cmax, env.lb_cost, env.ub_Cmax, env.ub_cost)
     DEBUG_PRINT(f"Init Cmax: {env.lb_Cmax}->{env.ub_Cmax} - Init cost: {env.lb_cost}$ - Max cost: {env.ub_cost}$")
     env.init_queue()
-    past_envs: list[Environment] = []
-    while not graph.Q.done():
-        features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device)
-        past_envs.append(env.clone())
-        execute_one_decision(env, features, train, REPLAY_MEMORY=REPLAY_MEMORY)
-    if train:
-        last_action: Action = env.get_last_action()
-        last_action.next_state = HistoricalState(REPLAY_MEMORY, env.graph.to_state(device=device), [], env.current_cmax, env.current_cost, last_action)
-        REPLAY_MEMORY.add_or_update_action(env.get_base_action(), final_makespan=env.current_cmax, final_cost=env.current_cost, need_rewards=True, device=device)
-    else:
-        return env.current_cmax, env.current_cost
+    best_step_envs: list[Environment] = []
+    best_solution: Environment = None
+    retry: int = 0
+    starting_step: int = 0
+    while retry < MAX_RETRY:
+        print(f"RETRY {retry}/{MAX_RETRY} - starting from step {starting_step}...")
+        step_envs: list[Environment] = best_step_envs[:starting_step] if best_step_envs else []
+        while not graph.Q.done():
+            features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device)
+            step_envs.append(env.clone())
+            execute_one_decision(env, features, train, REPLAY_MEMORY=REPLAY_MEMORY)
+        if train:
+            last_action: Action = env.get_last_action()
+            last_action.next_state = HistoricalState(REPLAY_MEMORY, env.graph.to_state(device=device), [], env.current_cmax, env.current_cost, last_action)
+            REPLAY_MEMORY.add_or_update_action(env.get_base_action(), final_makespan=env.current_cmax, final_cost=env.current_cost, need_rewards=True, device=device)
+        if best_solution is None or env.obj_value() < best_solution.obj_value():
+            best_solution  = env
+            best_step_envs = step_envs
+        while True:
+            starting_step = random.randrange(len(best_step_envs))
+            if len(best_step_envs[starting_step].possible_actions) > 1:
+                break
+        env: Environment = best_step_envs[starting_step].clone()
+        retry += 1
+    return best_solution

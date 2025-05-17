@@ -1,4 +1,4 @@
-MAX_REGRETS     = 25     # solving repetition in inference mode
+MAX_RETRY       = 25     # solving repetition in inference mode
 
 EPS_START       = 0.99   # starting value of epsilon
 EPS_END         = 0.005  # final value of epsilon
