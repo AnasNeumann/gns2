@@ -161,15 +161,13 @@ def select_one_action(agents: Agents, memory: Tree, actions_type: str, state: St
             return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
 
 # Update the environment with the selected action
-def search_and_select_next_action(env: Environment, agents: Agents, greedy: bool, train: bool, REPLAY_MEMORY: Tree, episode: int, device: str, clone:bool=True) -> tuple[Environment, State]:
+def search_and_select_next_action(env: Environment, agents: Agents, greedy: bool, train: bool, REPLAY_MEMORY: Tree, episode: int, device: str) -> State:
     poss_actions, actions_type, execution_times = get_feasible_actions(env)
     DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
     features: State = env.graph.to_state(device=device)
     idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
-    if clone:
-        env = env.clone()
     env.action_found(poss_actions, actions_type, idx, execution_times[idx])
-    return env, features
+    return features
 
 # ###################################
 # =*= III. APPLY A DECISION MADE =*=
@@ -413,11 +411,11 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
         REPLAY_MEMORY.init_tree(env.alpha, env.lb_Cmax, env.lb_cost, env.ub_Cmax, env.ub_cost)
     DEBUG_PRINT(f"Init Cmax: {env.lb_Cmax}->{env.ub_Cmax} - Init cost: {env.lb_cost}$ - Max cost: {env.ub_cost}$")
     env.init_queue()
-    to_clone: bool = False
+    past_envs: list[Environment] = []
     while not graph.Q.done():
-        env, features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device, clone=to_clone)
+        features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device)
+        past_envs.append(env.clone())
         execute_one_decision(env, features, train, REPLAY_MEMORY=REPLAY_MEMORY)
-        to_clone = True
     if train:
         last_action: Action = env.get_last_action()
         last_action.next_state = HistoricalState(REPLAY_MEMORY, env.graph.to_state(device=device), [], env.current_cmax, env.current_cost, last_action)
