@@ -1,4 +1,6 @@
-MAX_RETRY       = 25     # solving repetition in inference mode
+MAX_RETRY_INF      = 25  # solving repetition in inference mode
+MAX_RETRY_TRAIN    = 5   # number of retries for training
+MAX_TEST_FOR_RETRY = 50  # number of tests before giving up
 
 EPS_START       = 0.99   # starting value of epsilon
 EPS_END         = 0.005  # final value of epsilon
@@ -9,7 +11,7 @@ DELTA           = 2.0    # Huber loss "threshold" parameter (distinguishing betw
 TAU             = 0.003  # update rate of the target network
 LEARNING_RATE   = 2e-4   # learning rate for the policy model
 BATCH_SIZE      = 64     # batch size at training time
-EPISODES        = 5000   # number of training episodes
+EPISODES        = 6000   # number of training episodes
 SWITCH_INSTANCE = 100    # number of episodes before switching instance
 SAVING_ITRS     = 100    # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks

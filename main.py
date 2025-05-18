@@ -6,7 +6,7 @@ import torch
 torch.autograd.set_detect_anomaly(True)
 
 from conf import *
-from tools.common import to_bool, directory, objective_value
+from tools.common import to_bool, directory
 
 from solvers.gns_solver import solve
 from solvers.gns_training import train as pre_train

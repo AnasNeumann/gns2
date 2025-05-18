@@ -35,7 +35,8 @@ class HistoricalState:
         s: HistoricalState = HistoricalState(self.tree, self.state, deepcopy(self.possible_actions), self.end, self.cost, parent_action)
         for a in self.actions_tested:
             a: Action
-            s.actions_tested.append(a.clone(s))
+            a.clone(s)
+        return s
 
 class Action:
     def __init__(self, id: int, action_type: int, target: int, value: int, workload_removed: int=0, parent_state: HistoricalState=None):
@@ -53,8 +54,10 @@ class Action:
 
     def clone(self, parent_state: HistoricalState=None):
         a: Action = Action(self.id, self.action_type, self.target, self.value, self.workload_removed, parent_state)
-        a.next_state = self.next_state.clone(a)
-        
+        if self.next_state is not None:
+            self.next_state.clone(a)
+        return a
+
     def same(self, a) -> bool:
         a: Action
         return self.action_type == a.action_type and self.target == a.target and self.value == a.value
