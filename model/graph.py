@@ -296,7 +296,6 @@ class GraphInstance():
         g.remaining_types_of_materials              = deepcopy(self.remaining_types_of_materials)
         g.graph                                     = self.graph.clone()
         g.graph.to(g.device)
-        return g
 
     def add_node(self, type: str, features: Tensor):
         self.graph[type].x = torch.cat([self.graph[type].x, features], dim=0) if type in self.graph.node_types else features

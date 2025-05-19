@@ -12,9 +12,10 @@ from tools.tensors import tensors_to_probs
 
 from model.replay_memory import Tree, Action, HistoricalState
 from model.instance import Instance
-from model.graph import State, NO, YES
+from model.graph import GraphInstance, State, NO, YES
 from model.agent import Agents
 from model.environment import Environment
+
 from translators.instance2graph_translator import translate
 
 # ############################################
@@ -134,11 +135,10 @@ def get_scheduling_and_material_use_actions(env: Environment):
 # Search next possible actions with priority between decision spaces (outsourcing >> scheduling >> material use)
 def get_feasible_actions(env: Environment):
     actions = [] if not env.Q.item_queue else get_outourcing_actions(env)
-    type    = OUTSOURCING
+    type = OUTSOURCING
+    execution_times: list[int] = []
     if not actions:
         actions, execution_times, type = get_scheduling_and_material_use_actions(env)
-    else:
-        execution_times: list[int] = [0] * len(actions)
     return actions, type, execution_times
 
 # ######################################################
@@ -146,7 +146,7 @@ def get_feasible_actions(env: Environment):
 # ######################################################
 
 # Select one action based on current policy
-def select_one_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True) -> int:
+def select_one_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
     model: Module = agents.agents[actions_type].policy
     if train:
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
@@ -161,14 +161,16 @@ def select_one_action(agents: Agents, memory: Tree, actions_type: str, state: St
             return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
 
 # Update the environment with the selected action
-def search_and_select_next_action(env: Environment, agents: Agents, greedy: bool, train: bool, REPLAY_MEMORY: Tree, episode: int, device: str, ban: bool) -> State:
+def search_and_select_next_action(env: Environment, agents: Agents, greedy: bool, train: bool, REPLAY_MEMORY: Tree, episode: int, device: str) -> State:
     poss_actions, actions_type, execution_times = get_feasible_actions(env)
+    DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
     features: State = env.graph.to_state(device=device)
-    if ban: # already tried before (forbidden action)
+    if env.action_id >= 0: # already tried before (forbidden action)
         del poss_actions[env.action_id]
         del execution_times[env.action_id]
-    DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions (no ban): {poss_actions} at times: {execution_times}...")
-    idx: int = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
+        idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
+    else: 
+        idx = select_one_action(agents, REPLAY_MEMORY, actions_type, features, poss_actions, env.alpha, train, episode, greedy)
     env.action_found(poss_actions, actions_type, idx, execution_times[idx])
     return features
 
@@ -225,14 +227,14 @@ def apply_outsourcing_to_direct_parent(env: Environment, p: int, e: int, end_dat
         next_good_to_go: bool = True
         _t = next_possible_time(env.i, end_date, p, o)
         env.graph.update_operation(env.graph.operations_i2g[p][o], [('available_time', _t)], maxx=True)
-        for previous in env.graph.previous_operations[p][o]:
-            if not env.graph.is_operation_complete(env.graph.operations_i2g[p][previous]):
+        for previous in env.igraph.previous_operations[p][o]:
+            if not env.graph.is_operation_complete(env.igraph.operations_i2g[p][previous]):
                 DEBUG_PRINT(f"\t >> Cannot open parent' first physical operation ({p},{o}) due to ({p},{previous}) not finished! Move at least to {_t}...")
                 next_good_to_go = False
                 break
         if next_good_to_go:
             DEBUG_PRINT(f"\t >> Opening first physical operation ({p},{o}) of parent {_parent} at {_t}!")
-            env.Q.add_operation(env.graph.operations_i2g[p][o])
+            env.igraph.Q.add_operation(env.graph.operations_i2g[p][o])
 
 # Apply use material to an operation
 def apply_use_material(env: Environment, operation_id: int, material_id: int, use_material_time: int):
@@ -379,7 +381,7 @@ def execute_one_decision(env: Environment, features: State, train: bool, REPLAY_
         value = resource_id
         p, o = env.graph.operations_g2i[operation_id]
         DEBUG_PRINT(f"Scheduling: operation {operation_id} -> ({p},{o}) on resource {env.graph.resources_g2i[resource_id]} at time {env.execution_time}...")     
-        _operation_end, _actual_scheduling_time, workload_removed = schedule_operation(env, operation_id, resource_id, env.execution_time)
+        _operation_end, _actual_scheduling_time, workload_removed = schedule_operation(env, operation_id, resource_id)
         if env.i.simultaneous[p][o]:
             DEBUG_PRINT("\t >> Simulatenous...")
             _operation_end, total_execution_time = schedule_other_resources_if_simultaneous(env, operation_id, resource_id, p, o, _actual_scheduling_time, _operation_end)
@@ -395,11 +397,11 @@ def execute_one_decision(env: Environment, features: State, train: bool, REPLAY_
             value = material_id
             p, o = env.graph.operations_g2i[operation_id]
             DEBUG_PRINT(f"Material use: operation {operation_id} -> ({p},{o}) on material {env.graph.materials_g2i[material_id]} at time {env.execution_time}...")  
-            apply_use_material(env, operation_id, material_id, env.execution_time)
+            apply_use_material(env, operation_id, material_id)
             if env.graph.is_operation_complete(operation_id):
                 env.Q.remove_operation(operation_id)
                 try_to_open_next_operations(env, operation_id)
-            env.current_cmax = max(env.current_cmax, env.execution_time)
+            env.current_cmax = max(env.current_cmax)
     if train:
         is_first_env: bool = env.is_first_env()
         env.previous_actions.append(Action(env.action_id, env.action_type, target, value, workload_removed, state_before_action if not is_first_env else None))
@@ -415,45 +417,27 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
     DEBUG_PRINT(f"Init Cmax: {env.lb_Cmax}->{env.ub_Cmax} - Init cost: {env.lb_cost}$ - Max cost: {env.ub_cost}$")
     env.init_queue()
     best_step_envs: list[Environment] = []
-    best_solution: Environment        = None
-    retry: int                        = 1
-    ban: bool                         = False
-    starting_step: int                = 0
-    limit_retries: int                = MAX_RETRY_TRAIN if train else MAX_RETRY_INF
-    while retry <= limit_retries:
-
-        # 1. Execute an instance either from scratch or starting from a step -----
-        print(f"RETRY {retry}/{limit_retries} - starting from step {starting_step}...")
-        step_envs: list[Environment] = best_step_envs[:starting_step].copy() if best_step_envs else []
-        while not env.Q.done():
-            features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device, ban=ban)
+    best_solution: Environment = None
+    retry: int = 0
+    starting_step: int = 0
+    while retry < MAX_RETRY:
+        print(f"RETRY {retry}/{MAX_RETRY} - starting from step {starting_step}...")
+        step_envs: list[Environment] = best_step_envs[:starting_step] if best_step_envs else []
+        while not graph.Q.done():
+            features = search_and_select_next_action(env=env, agents=agents, greedy=greedy, train=train, REPLAY_MEMORY=REPLAY_MEMORY, episode=episode, device=device)
             step_envs.append(env.clone())
             execute_one_decision(env, features, train, REPLAY_MEMORY=REPLAY_MEMORY)
-            ban = False
         if train:
             last_action: Action = env.get_last_action()
             last_action.next_state = HistoricalState(REPLAY_MEMORY, env.graph.to_state(device=device), [], env.current_cmax, env.current_cost, last_action)
             REPLAY_MEMORY.add_or_update_action(env.get_base_action(), final_makespan=env.current_cmax, final_cost=env.current_cost, need_rewards=True, device=device)
-
-        # 2. Check if a new best solution is found ----------------------------
-        if best_solution is None or env.obj_value() <= best_solution.obj_value():
+        if best_solution is None or env.obj_value() < best_solution.obj_value():
             best_solution  = env
             best_step_envs = step_envs
-            if not train:
-                limit_retries += 1
-
-        # 3. Try to reset the environment and restart -------------------------
-        test: int = 0
-        found: bool = False
-        while test < MAX_TEST_FOR_RETRY:
-            starting_step = random.randrange(len(best_step_envs)-1)
+        while True:
+            starting_step = random.randrange(len(best_step_envs))
             if len(best_step_envs[starting_step].possible_actions) > 1:
-                found = True
                 break
-            test += 1
-        if not found:
-            break
         env: Environment = best_step_envs[starting_step].clone()
         retry += 1
-        ban = True
     return best_solution
