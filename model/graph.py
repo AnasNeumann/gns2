@@ -7,7 +7,6 @@ from tools.common import num_feature
 from tools.tensors import features2tensor, id2tensor
 from model.instance import Instance
 from conf import YES, NO
-from model.queue import Queue
 
 # ############################################################
 # =*= HYPER-GRAPH DATA STRUCTURES & MANIPULATION FUNCTIONS =*=
@@ -250,42 +249,14 @@ class GraphInstance():
         self.approximate_item_local_time: list[list[int]] = []
         self.approximate_item_local_time_with_children: list[list[int]] = []
         self.outsourced_item_time_with_children: list[list[int]] = []
-
         self.lb_Cmax: int = 0
         self.ub_Cmax: int = 0 
         self.lb_cost: int = 0
         self.ub_cost: int = 0
-        self.alpha: Tensor = None
-
-        self.previous_operations: list[list[list[int]]] = []
-        self.next_operations: list[list[list[int]]] = []
-
-        self.Q: Queue = Queue()
-        self.actions: list = []
-        self.current_cmax: int = 0
-        self.current_cost: int = 0
-        self.remaining_types_of_resources: list[list[list[int]]] = []
-        self.remaining_types_of_materials: list[list[list[int]]] = []
 
         self.graph: HeteroData = HeteroData()
         self.device: str = device
         self.graph.to(device)
-
-    def get_last_action(self):
-        return self.actions[-1] if len(self.actions) > 0 else None
-    
-    def get_base_action(self):
-        return self.actions[0] if len(self.actions) > 0 else None
-    
-    def is_first_state(self):
-        return len(self.actions) == 0
-        
-    # Init the task and time queue
-    def init_queue(self, i: Instance):
-        for item_id in self.project_heads:
-            p, head = self.items_g2i[item_id]
-            for o in i.first_operations(p, head):
-                self.Q.add_operation(self.operations_i2g[p][o])
 
     def add_node(self, type: str, features: Tensor):
         self.graph[type].x = torch.cat([self.graph[type].x, features], dim=0) if type in self.graph.node_types else features

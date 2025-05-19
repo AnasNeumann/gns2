@@ -1,11 +1,10 @@
 import torch
-from torch.nn import Sequential, Linear, ReLU, Module, ModuleList, LayerNorm, Dropout, Identity
+from torch.nn import Sequential, Linear, ReLU, Module, ModuleList, LayerNorm, Dropout
 from torch import Tensor
 from model.graph import State
 from torch_geometric.nn import GATConv, AttentionalAggregation
 from model.graph import FC as f
 from conf import * 
-import torch.nn.functional as F
 
 # ##########################################################
 # =*= GRAPH ATTENTION NEURAL NETWORK (GNN): ARCHITECTURE =*=
@@ -17,15 +16,19 @@ __license__ = "MIT"
 def dim(v):
     return len(v)
 
-class ResidualMLP(Module):
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ResidualMLP(nn.Module):
     def __init__(self, in_dim:  int, out_dim: int, dropout: float=DROPOUT, activation=F.relu):
         super().__init__()
         self.activation = activation
-        self.fc1 = Linear(in_dim, out_dim)
-        self.fc2 = Linear(out_dim, out_dim)
-        self.dropout = Dropout(dropout)
-        self.res_proj = (Identity() if in_dim == out_dim else Linear(in_dim, out_dim))
-        self.norm = LayerNorm(out_dim)
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        self.fc2 = nn.Linear(out_dim, out_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.res_proj = (nn.Identity() if in_dim == out_dim else nn.Linear(in_dim, out_dim))
+        self.norm = nn.LayerNorm(out_dim)
 
     def forward(self, x):
         out = self.activation(self.fc1(x))
@@ -61,7 +64,7 @@ class EmbbedingGNN(Module):
         self.GAT_stack_succs                = ModuleList() # 'succ operation', '->', 'pred operation'
         self.GAT_stack_res_for_op           = ModuleList() # 'resource', '->', 'operation'
         self.GAT_stack_mat_for_op           = ModuleList() # 'material', '->', 'operation'
-
+  
         for _ in range(stack):
             self.GAT_stack_ops_for_mat.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'operation', '->', 'material'
             self.GAT_stack_ops_for_res.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'operation', '->', 'resource'
@@ -128,12 +131,12 @@ class SchedulingActor(Module):
 
     def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
         _, r_embbedings, i_embeddings, o_embeddings = self.gnn(state)
-        pooled_resources                            = self.resource_pooling(r_embbedings)
-        pooled_items                                = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
-        pooled_operations                           = self.operation_pooling(o_embeddings)
-        state_embedding                             = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_resources], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
-        operations_ids, resources_ids               = zip(*actions)
-        inputs                                      = torch.cat([o_embeddings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding], dim=1) # shape = [possible decision, concat embedding]
+        operations_ids, resources_ids = zip(*actions)
+        pooled_resources  = self.resource_pooling(r_embbedings)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_resources], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
+        inputs            = torch.cat([o_embeddings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding], dim=1) # shape = [possible decision, concat embedding]
         return self.actor(inputs)
 
 class OutousrcingActor(Module):
@@ -152,12 +155,12 @@ class OutousrcingActor(Module):
 
     def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
         _, _, i_embeddings, o_embeddings = self.gnn(state)
-        pooled_items                     = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
-        pooled_operations                = self.operation_pooling(o_embeddings)
-        state_embedding                  = torch.cat([torch.cat([pooled_items, pooled_operations], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
-        item_ids, outsourcing_choices    = zip(*actions)
-        outsourcing_choices_tensor       = torch.tensor(outsourcing_choices, dtype=torch.float32, device=alpha.device).unsqueeze(1)
-        inputs                           = torch.cat([i_embeddings[list(item_ids)], outsourcing_choices_tensor, state_embedding], dim=1)
+        item_ids, outsourcing_choices = zip(*actions)
+        outsourcing_choices_tensor = torch.tensor(outsourcing_choices, dtype=torch.float32, device=alpha.device).unsqueeze(1)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
+        inputs            = torch.cat([i_embeddings[list(item_ids)], outsourcing_choices_tensor, state_embedding], dim=1)
         return self.actor(inputs)
     
 class MaterialActor(Module):
@@ -177,10 +180,10 @@ class MaterialActor(Module):
 
     def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
         m_embeddings, _, i_embeddings, o_embeddings = self.gnn(state)
-        pooled_materials                            = self.material_pooling(m_embeddings)
-        pooled_items                                = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
-        pooled_operations                           = self.operation_pooling(o_embeddings)
-        state_embedding                             = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_materials], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
-        operations_ids, materials_ids               = zip(*actions)
-        inputs                                      = torch.cat([o_embeddings[list(operations_ids)], m_embeddings[list(materials_ids)], state_embedding], dim=1)
+        operations_ids, materials_ids = zip(*actions)
+        pooled_materials  = self.material_pooling(m_embeddings)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_materials], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
+        inputs            = torch.cat([o_embeddings[list(operations_ids)], m_embeddings[list(materials_ids)], state_embedding], dim=1)
         return self.actor(inputs)

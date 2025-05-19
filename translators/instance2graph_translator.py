@@ -196,23 +196,6 @@ def build_lower_bounds(i: Instance, graph: GraphInstance, next_operations: list[
         for o in i.first_operations(p, i.project_head(p)):
             rec_lower_bound(i, graph, p, o, 0, next_operations)
 
-# Build fixed array of required resources per operation
-def build_required_resources(i: Instance, graph: GraphInstance):
-    graph.remaining_types_of_resources = [[[] for _ in i.loop_operations(p)] for p in i.loop_projects()]
-    graph.remaining_types_of_materials = [[[] for _ in i.loop_operations(p)] for p in i.loop_projects()]
-    graph.res_by_types = [[] for _ in range(i.nb_resource_types)]
-    for r in range(i.nb_resources):
-        graph.res_by_types[graph.resource_family[r]].append(r)
-    for p in i.loop_projects():
-        for o in i.loop_operations(p):
-            for rt in i.required_rt(p, o):
-                resources_of_rt = i.resources_by_type(rt)
-                if resources_of_rt:
-                    if i.finite_capacity[resources_of_rt[0]]:
-                        graph.remaining_types_of_resources[p][o].append(rt)
-                    else:
-                        graph.remaining_types_of_materials[p][o].append(rt) 
-
 def translate(i: Instance, device: str):
     graph = GraphInstance(device=device)
     build_direct_access_objects(i, graph)
@@ -249,7 +232,6 @@ def translate(i: Instance, device: str):
     graph.items_i2g = graph.build_i2g_2D(graph.items_g2i)
     graph.add_dummy_item(device=device)
     build_precedence(i, graph)
-    graph.previous_operations, graph.next_operations = i.build_next_and_previous_operations()
-    build_lower_bounds(i, graph, graph.next_operations)
-    build_required_resources(i, graph)
-    return graph 
+    previous_operations, next_operations = i.build_next_and_previous_operations()
+    build_lower_bounds(i, graph, next_operations)
+    return graph, previous_operations, next_operations
