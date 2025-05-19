@@ -367,23 +367,25 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
 # Main function to solve an instance from sratch 
 def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
-    DEBUG_PRINT               = debug_printer(debug)
-    best_cmax: int            = -1
-    best_cost: int            = -1
-    alpha: Tensor             = torch.tensor([1.0], device=device)
-    nb_repetitions: int       = TRAIN_RETRY if train else TEST_RETRY
-    retry: int                = 1
-    banned_step: int          = -1
-    past_decisions: list[int] = []
+    DEBUG_PRINT                            = debug_printer(debug)
+    best_cmax: int                         = -1
+    best_cost: int                         = -1
+    alpha: Tensor                          = torch.tensor([1.0], device=device)
+    nb_repetitions: int                    = TRAIN_RETRY if train else TEST_RETRY
+    retry: int                             = 1
+    banned_step: int                       = -1
+    past_decision_made: list[int]          = []
+    past_nb_decisions: list[int]           = []
     while retry <= nb_repetitions:
         graph, previous_operations, next_operations = translate(i=instance, device=device)
         required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
         DEBUG_PRINT(f"Init Cmax: {graph.lb_Cmax}->{graph.ub_Cmax} - Init cost: {graph.lb_cost}$ - Max cost: {graph.ub_cost}$")
-        current_cmax: int    = 0
-        current_cost: int    = 0
-        Q: Queue             = init_queue(instance, graph)
-        step: int            = 0
-        decisions: list[int] = []
+        current_cmax: int        = 0
+        current_cost: int        = 0
+        Q: Queue                 = init_queue(instance, graph)
+        step: int                = 0
+        decision_made: list[int] = []
+        nb_decisions: list[int]  = []
         if train:
             REPLAY_MEMORY.init_tree(alpha, graph.lb_Cmax, graph.lb_cost, graph.ub_Cmax, graph.ub_cost)
             _LOCAL_ACTION_TREE: Action = None
@@ -398,15 +400,16 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                 if REPLAY_MEMORY.init_state is None:
                     REPLAY_MEMORY.init_state = state_before_action
             if step < banned_step: # (1/3) forced to remake the previous decision
-                idx: int = past_decisions[step]
+                idx: int = past_decision_made[step]
             elif step == banned_step: # (2/3) remove the banned decision to foce a change
-                banned: int = past_decisions[step]
+                banned: int = past_decision_made[step]
                 poss_actions_without_banned = poss_actions[:banned] + poss_actions[banned+1:]
                 _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode, greedy)
                 idx = _i if _i < banned else _i + 1
             else: # (3/3) take a brand new decision freely
                 idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
-            decisions.append(idx)
+            decision_made.append(idx)
+            nb_decisions.append(len(poss_actions))
             if actions_type == OUTSOURCING: # Outsourcing action
                 item_id, outsourcing_choice = poss_actions[idx]
                 target = item_id
@@ -462,12 +465,18 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
             REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True, device=device)
 
         if current_cmax <= best_cmax or best_cmax < 0:
-            best_cmax       = current_cmax
-            best_cost       = current_cost
-            nb_repetitions += 1
-            past_decisions  = decisions
-        banned_step = random.randint(0, len(past_decisions)-1)
+            best_cmax           = current_cmax
+            best_cost           = current_cost
+            nb_repetitions     += 1
+            past_decision_made  = decision_made
+            past_nb_decisions   = nb_decisions
+
+        banned_step +=1
+        while banned_step < len(past_decision_made) and past_nb_decisions[banned_step] < 2:
+            banned_step +=1
+        if banned_step >= len(past_decision_made) or past_nb_decisions[banned_step] < 2:
+            break
         retry += 1
         if retry <= nb_repetitions:
-            print(f"RETRY {retry}/{nb_repetitions}: best nb of steps = {len(past_decisions)} - last nb of steps = {len(decisions)} - next banned step = {banned_step}...")
+            print(f"RETRY {retry}/{nb_repetitions}: best nb of steps = {len(past_decision_made)} - last nb of steps = {len(decision_made)} - next banned step = {banned_step}...")
     return best_cmax, best_cost

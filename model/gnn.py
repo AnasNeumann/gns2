@@ -5,6 +5,7 @@ from model.graph import State
 from torch_geometric.nn import GATConv, AttentionalAggregation
 from model.graph import FC as f
 from conf import *
+import torch.nn.functional as F
 
 # ##########################################################
 # =*= GRAPH ATTENTION NEURAL NETWORK (GNN): ARCHITECTURE =*=
