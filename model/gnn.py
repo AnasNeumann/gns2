@@ -1,10 +1,10 @@
 import torch
-from torch_geometric.data.storage import EdgeStorage
-from torch.nn import Sequential, Linear, ReLU, Parameter, LeakyReLU, Module, ModuleList
-import torch.nn.functional as F
+from torch.nn import Sequential, Linear, ReLU, Module, ModuleList, LayerNorm, Dropout, Identity
 from torch import Tensor
-from model.graph import FeatureConfiguration, State
-from tools.tensors import scatter_sum, fast_cross_attention, fast_self_attention
+from model.graph import State
+from torch_geometric.nn import GATConv, AttentionalAggregation
+from model.graph import FC as f
+from conf import *
 
 # ##########################################################
 # =*= GRAPH ATTENTION NEURAL NETWORK (GNN): ARCHITECTURE =*=
@@ -13,282 +13,173 @@ __author__ = "Anas Neumann - anas.neumann@polymtl.ca"
 __version__ = "1.0.0"
 __license__ = "MIT"
 
-class MaterialEmbeddingLayer(Module):
-    def __init__(self, material_dimension: int, operation_dimension: int, embedding_dimension: int):
-        super(MaterialEmbeddingLayer, self).__init__()
-        self.material_upscale  = Linear(material_dimension, embedding_dimension, bias=False)
-        self.att_self_coef     = Parameter(torch.zeros(size=(2 * embedding_dimension, 1)))
-        self.operation_upscale = Linear(operation_dimension, embedding_dimension, bias=False)
-        self.att_coef          = Parameter(torch.zeros(size=(2 * embedding_dimension, 1)))
-        self.leaky_relu        = LeakyReLU(negative_slope=0.2)
-        self.reset_parameters()
+def dim(v):
+    return len(v)
 
-    def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.material_upscale.weight.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.operation_upscale.weight.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_coef.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_self_coef.data, gain=1.414)
+class ResidualMLP(Module):
+    def __init__(self, in_dim:  int, out_dim: int, dropout: float=DROPOUT, activation=F.relu):
+        super().__init__()
+        self.activation = activation
+        self.fc1 = Linear(in_dim, out_dim)
+        self.fc2 = Linear(out_dim, out_dim)
+        self.dropout = Dropout(dropout)
+        self.res_proj = (Identity() if in_dim == out_dim else Linear(in_dim, out_dim))
+        self.norm = LayerNorm(out_dim)
 
-    def forward(self, materials: Tensor, operations: Tensor, need_for_materials: EdgeStorage):
-        upscaled_materials    = self.material_upscale(materials)
-        self_attention        = fast_self_attention(self.att_self_coef, self.leaky_relu, upscaled_materials)
-        
-        ops_by_edges          = self.operation_upscale(torch.cat([operations[need_for_materials.edge_index[0]], need_for_materials.edge_attr], dim=-1))
-        mat_by_edges          = upscaled_materials[need_for_materials.edge_index[1]]
-        cross_attention       = fast_cross_attention(self.att_coef, self.leaky_relu, mat_by_edges, ops_by_edges)
+    def forward(self, x):
+        out = self.activation(self.fc1(x))
+        out = self.dropout(out)
+        out = self.fc2(out)
+        out = self.norm(self.res_proj(x) + out)
+        return out
 
-        normalizer            = F.softmax(torch.cat([self_attention, cross_attention], dim=0), dim=0)
-        norm_self_attention   = normalizer[:self_attention.size(0)]
-        norm_cross_attention  = normalizer[self_attention.size(0):]
+class EmbbedingGNN(Module):
+    def __init__(self, d_model: int = D_MODEL, stack: int = STACK, num_heads: int = HEADS, dropout: float = DROPOUT):
+        super(EmbbedingGNN, self).__init__()
+        self.stack                          = stack
+        self.d_model                        = d_model
 
-        weighted_ops_by_edges = norm_cross_attention * ops_by_edges
-        sum_ops_by_edges      = scatter_sum(weighted_ops_by_edges, need_for_materials.edge_index[1], dim=0, dim_size=materials.size(0))
-        
-        embedding             = F.elu(norm_self_attention * upscaled_materials + sum_ops_by_edges)
-        return embedding
+        self.material_upscale               = Linear(dim(f.material), d_model)
+        self.resource_upscale               = Linear(dim(f.resource), d_model)
+        self.item_upscale                   = Linear(dim(f.item), d_model)
+        self.operation_upscale              = Linear(dim(f.operation), d_model)
+        self.need_for_materials_upscale     = Linear(dim(f.need_for_materials), d_model)
+        self.need_for_resources_upscale     = Linear(dim(f.need_for_resources), d_model)
+        self.rev_need_for_materials_upscale = Linear(dim(f.need_for_materials), d_model)
+        self.rev_need_for_resources_upscale = Linear(dim(f.need_for_resources), d_model)
 
-class ResourceEmbeddingLayer(Module):
-    def __init__(self, resource_dimension: int, operation_dimension: int, embedding_dimension: int):
-        super(ResourceEmbeddingLayer, self).__init__()
-        self.self_upscale       = Linear(resource_dimension, embedding_dimension, bias=False)
-        self.resource_upscale   = Linear(resource_dimension, embedding_dimension, bias=False)
-        self.operation_upscale  = Linear(operation_dimension, embedding_dimension, bias=False)
-        self.att_operation_coef = Parameter(torch.zeros(size=(2 * embedding_dimension, 1)))
-        self.att_resource_coef  = Parameter(torch.zeros(size=(2 * embedding_dimension, 1)))
-        self.att_self_coef      = Parameter(torch.zeros(size=(2 * embedding_dimension, 1)))
-        self.leaky_relu         = LeakyReLU(negative_slope=0.2)
-        self.reset_parameters()
+        self.GAT_stack_ops_for_mat          = ModuleList() # 'operation', '->', 'material'
+        self.GAT_stack_ops_for_res          = ModuleList() # 'operation', '->', 'resource'
 
-    def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.self_upscale.weight.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.resource_upscale.weight.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.operation_upscale.weight.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_operation_coef.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_resource_coef.data, gain=1.414)
-        torch.nn.init.xavier_uniform_(self.att_self_coef.data, gain=1.414)
+        self.GAT_stack_ops_for_item         = ModuleList() # 'operation', '->', 'item'
+        self.GAT_stack_parents              = ModuleList() # 'parent item', '->', 'children item'
+        self.GAT_stack_children             = ModuleList() # 'children item', '->', 'parent item'
 
-    def forward(self, resources: Tensor, operations: Tensor, need_for_resources: EdgeStorage):
-        self_resources_upscaled         = self.self_upscale(resources) 
-        self_attention                  = fast_self_attention(self.att_self_coef, self.leaky_relu, self_resources_upscaled)
+        self.GAT_stack_item_for_op          = ModuleList() # 'item', '->', 'operation'
+        self.GAT_stack_preds                = ModuleList() # 'pred operation', '->', 'succ operation'
+        self.GAT_stack_succs                = ModuleList() # 'succ operation', '->', 'pred operation'
+        self.GAT_stack_res_for_op           = ModuleList() # 'resource', '->', 'operation'
+        self.GAT_stack_mat_for_op           = ModuleList() # 'material', '->', 'operation'
+  
+        for _ in range(stack):
+            self.GAT_stack_ops_for_mat.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'operation', '->', 'material'
+            self.GAT_stack_ops_for_res.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'operation', '->', 'resource'
+            
+            self.GAT_stack_ops_for_item.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'operation', '->', 'item'
+            self.GAT_stack_parents.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'parent item', '->', 'children item'
+            self.GAT_stack_children.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'children item', '->', 'parent item'
+            
+            self.GAT_stack_item_for_op.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'item', '->', 'operation'
+            self.GAT_stack_preds.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'pred operation', '->', 'succ operation'
+            self.GAT_stack_succs.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, add_self_loops=False)) # 'succ operation', '->', 'pred operation'
+            self.GAT_stack_res_for_op.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'resource', '->', 'operation'
+            self.GAT_stack_mat_for_op.append(GATConv(in_channels=(d_model, d_model), out_channels=d_model // num_heads, heads=num_heads, concat=True, edge_dim=d_model, add_self_loops=False)) # 'material', '->', 'operation'
 
-        ops_by_need_edges               = self.operation_upscale(torch.cat([operations[need_for_resources.edge_index[0]], need_for_resources.edge_attr], dim=-1))
-        res_by_need_edges               = self_resources_upscaled[need_for_resources.edge_index[1]]
-        operations_cross_attention      = fast_cross_attention(self.att_operation_coef, self.leaky_relu, res_by_need_edges, ops_by_need_edges)
-        
-        normalizer                      = F.softmax(torch.cat([self_attention, operations_cross_attention], dim=0), dim=0)
-        norm_operations_cross_attention = normalizer[self_attention.size(0):]
-
-        weighted_ops_by_edges           = norm_operations_cross_attention * ops_by_need_edges
-        sum_ops_by_edges                = scatter_sum(weighted_ops_by_edges, need_for_resources.edge_index[1], dim=0, dim_size=self_resources_upscaled.size(0))
-        embedding                       = F.elu(normalizer[:self_attention.size(0)] * self_resources_upscaled + sum_ops_by_edges)
-        return embedding
-
-class ItemEmbeddingLayer(Module):
-    def __init__(self, operation_dimension: int, item_dimension: int, hidden_channels: int, out_channels: int):
-        super(ItemEmbeddingLayer, self).__init__()
-        self.embedding_size = out_channels
-        first_dimension     = hidden_channels
-        second_dimension    = int(hidden_channels/2)
-        self.mlp_combined = Sequential(
-            Linear(4 * out_channels, first_dimension), ReLU(),
-            Linear(first_dimension, second_dimension), ReLU(),
-            Linear(second_dimension, out_channels)
-        )
-        self.mlp_operations = Sequential(
-            Linear(operation_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_parent = Sequential(
-            Linear(item_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_children = Sequential(
-            Linear(item_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_self = Sequential(
-            Linear(item_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-
-    def forward(self, items: Tensor, parents: Tensor, operations: Tensor, item_assembly: EdgeStorage, operation_assembly: EdgeStorage):
-        self_embeddings         = self.mlp_self(items)
-        parent_embeddings       = self.mlp_parent(items[parents])
-
-        parent_idx_by_edge      = item_assembly.edge_index[0]
-        children_by_edge        = items[item_assembly.edge_index[1]]
-        agg_children            = scatter_sum(children_by_edge, parent_idx_by_edge, dim=0, dim_size=items.size(0))
-        agg_children_embeddings = self.mlp_children(agg_children)
-
-        item_idx_by_edges       = operation_assembly.edge_index[0]
-        operations_by_edges     = operations[operation_assembly.edge_index[1]]
-        agg_ops                 = scatter_sum(operations_by_edges, item_idx_by_edges, dim=0, dim_size=items.size(0))
-        agg_ops_embeddings      = self.mlp_operations(agg_ops)
-        
-        embedding      = torch.zeros((items.shape[0], self.embedding_size), device=items.device)
-        embedding[:-1] = self.mlp_combined(torch.cat([parent_embeddings[:-1], agg_children_embeddings[:-1], agg_ops_embeddings[:-1], self_embeddings[:-1]], dim=-1))
-        return embedding
+        self.material_MLP               = ResidualMLP(2 * d_model, d_model, dropout=dropout)
+        self.resource_MLP               = ResidualMLP(2 * d_model, d_model, dropout=dropout)
+        self.item_MLP                   = ResidualMLP(4 * d_model, d_model, dropout=dropout)
+        self.operation_MLP              = ResidualMLP(6 * d_model, d_model, dropout=dropout)
     
-class OperationEmbeddingLayer(Module):
-    def __init__(self, operation_dimension: int, item_dimension: int, resources_dimension: int, material_dimension: int, hidden_channels: int, out_channels: int):
-        super(OperationEmbeddingLayer, self).__init__()
-        self.embedding_size = out_channels
-        first_dimension     = hidden_channels
-        second_dimension    = int(hidden_channels/2)
-        self.mlp_combined = Sequential(
-            Linear(4 * out_channels + resources_dimension + material_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, second_dimension), ReLU(),
-            Linear(second_dimension, out_channels)
-        )
-        self.mlp_items = Sequential(
-            Linear(item_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_predecessors = Sequential(
-            Linear(operation_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_successors = Sequential(
-            Linear(operation_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
-        self.mlp_resources = Sequential(
-            Linear(resources_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, resources_dimension)
-        )
-        self.mlp_materials = Sequential(
-            Linear(material_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, material_dimension)
-        )
-        self.mlp_self = Sequential(
-            Linear(operation_dimension, first_dimension), ReLU(),
-            Linear(first_dimension, out_channels)
-        )
+    def forward(self, state: State):
+        x_operations     = self.operation_upscale(state.operations)
+        x_items          = self.item_upscale(state.items)
+        x_materials      = self.material_upscale(state.materials)
+        x_resources      = self.resource_upscale(state.resources)
+        x_material_needs = self.need_for_materials_upscale(state.need_for_materials.edge_attr)
+        x_resource_needs = self.need_for_resources_upscale(state.need_for_resources.edge_attr)
+        x_mat_for_ops    = self.rev_need_for_materials_upscale(state.rev_need_for_materials.edge_attr)
+        x_res_for_ops    = self.rev_need_for_resources_upscale(state.rev_need_for_resources.edge_attr)
 
-    def forward(self, operations: Tensor, items: Tensor, related_items: Tensor, materials: Tensor, resources: Tensor, need_for_resources: EdgeStorage, need_for_materials: EdgeStorage, precedences: EdgeStorage):
-        self_embeddings              = self.mlp_self(operations)
-        item_embeddings              = self.mlp_items(items[related_items])
+        for l in range(self.stack):
+            ops_for_mat  = self.GAT_stack_ops_for_mat[l]((x_operations, x_materials), state.need_for_materials.edge_index, size=(x_operations.size(0), x_materials.size(0)), edge_attr=x_material_needs)  # 'operation', '->', 'material'
+            ops_for_res  = self.GAT_stack_ops_for_res[l]((x_operations, x_resources), state.need_for_resources.edge_index, size=(x_operations.size(0), x_resources.size(0)), edge_attr=x_resource_needs)  # 'operation', '->', 'resource'
+            
+            ops_for_item = self.GAT_stack_ops_for_item[l]((x_operations, x_items), state.operations_of_item.edge_index, size=(x_operations.size(0), x_items.size(0)))  # 'operation', '->', 'item'
+            parents      = self.GAT_stack_parents[l]((x_items, x_items), state.parent_assembly.edge_index, size=(x_items.size(0), x_items.size(0))) # 'parent item', '->', 'children item'
+            children     = self.GAT_stack_children[l]((x_items, x_items), state.children_assembly.edge_index, size=(x_items.size(0), x_items.size(0)))  # 'children item', '->', 'parent item'
 
-        operations_idx_by_mat_edge   = need_for_materials.edge_index[0]
-        materials_by_edge            = materials[need_for_materials.edge_index[1]]
-        agg_materials                = scatter_sum(materials_by_edge, operations_idx_by_mat_edge, dim=0, dim_size=operations.size(0))
-        agg_materials_embeddings     = self.mlp_materials(agg_materials)
+            item_for_op  = self.GAT_stack_item_for_op[l]((x_items, x_operations), state.operation_assembly.edge_index, size=(x_items.size(0), x_operations.size(0))) # 'item', '->', 'operation'
+            preds        = self.GAT_stack_preds[l]((x_operations, x_operations), state.precedences.edge_index, size=(x_operations.size(0), x_operations.size(0))) # 'prec operation', '->', 'succ operation'
+            succs        = self.GAT_stack_succs[l]((x_operations, x_operations), state.successors.edge_index, size=(x_operations.size(0), x_operations.size(0))) # 'succ operation' '->', 'prec operation'
+            res_for_op   = self.GAT_stack_res_for_op[l]((x_resources, x_operations), state.rev_need_for_resources.edge_index, size=(x_resources.size(0), x_operations.size(0)), edge_attr=x_res_for_ops) # 'resource', '->', 'operation'
+            mat_for_op   = self.GAT_stack_mat_for_op[l]((x_materials, x_operations), state.rev_need_for_materials.edge_index, size=(x_materials.size(0), x_operations.size(0)), edge_attr=x_mat_for_ops) # 'material', '->', 'operation'
 
-        operations_idx_by_res_edge   = need_for_resources.edge_index[0]
-        resources_by_edge            = resources[need_for_resources.edge_index[1]]
-        agg_resources                = scatter_sum(resources_by_edge, operations_idx_by_res_edge, dim=0, dim_size=operations.size(0))
-        agg_resources_embeddings     = self.mlp_resources(agg_resources)
+            x_materials  = self.material_MLP(torch.cat([x_materials, ops_for_mat], dim=-1))
+            x_resources  = self.resource_MLP(torch.cat([x_resources, ops_for_res], dim=-1))
+            x_items      = self.item_MLP(torch.cat([x_items, ops_for_item, parents, children], dim=-1))
+            x_operations = self.operation_MLP(torch.cat([x_operations, preds, succs, item_for_op, res_for_op, mat_for_op], dim=-1))
+        return x_materials, x_resources, x_items, x_operations 
 
-        operations_idx_by_pred_edge  = precedences.edge_index[0]
-        preds_by_edge                = operations[precedences.edge_index[1]]
-        agg_preds                    = scatter_sum(preds_by_edge, operations_idx_by_pred_edge, dim=0, dim_size=operations.size(0))
-        agg_preds_embeddings         = self.mlp_predecessors(agg_preds)
-
-        operations_idx_by_succs_edge = precedences.edge_index[1]
-        succs_by_edge                = operations[precedences.edge_index[0]]
-        agg_succs                    = scatter_sum(succs_by_edge, operations_idx_by_succs_edge, dim=0, dim_size=operations.size(0))
-        agg_succs_embeddings         = self.mlp_successors(agg_succs)
-
-        embedding = self.mlp_combined(torch.cat([agg_preds_embeddings, agg_succs_embeddings, agg_resources_embeddings, agg_materials_embeddings, item_embeddings, self_embeddings], dim=-1))
-        return embedding
-
-class L1_EmbbedingGNN(Module):
-    def __init__(self, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, embedding_hidden_channels: int, nb_embedding_layers: int):
-        super(L1_EmbbedingGNN, self).__init__()
-        conf = FeatureConfiguration()
-        self.resource_and_material_embedding_size = resource_and_material_embedding_size
-        self.operation_and_item_embedding_size = operation_and_item_embedding_size
-        self.nb_embedding_layers = nb_embedding_layers
-        self.material_layers = ModuleList()
-        self.resource_layers = ModuleList()
-        self.item_layers = ModuleList()
-        self.operation_layers = ModuleList()
-        self.material_layers.append(MaterialEmbeddingLayer(len(conf.material), len(conf.operation)+len(conf.need_for_materials), resource_and_material_embedding_size))
-        self.resource_layers.append(ResourceEmbeddingLayer(len(conf.resource), len(conf.operation)+len(conf.need_for_resources), resource_and_material_embedding_size))
-        self.item_layers.append(ItemEmbeddingLayer(len(conf.operation), len(conf.item), embedding_hidden_channels, operation_and_item_embedding_size))
-        self.operation_layers.append(OperationEmbeddingLayer(len(conf.operation), operation_and_item_embedding_size, resource_and_material_embedding_size, resource_and_material_embedding_size, embedding_hidden_channels, operation_and_item_embedding_size))
-        for _ in range(self.nb_embedding_layers-1):
-            self.material_layers.append(MaterialEmbeddingLayer(resource_and_material_embedding_size, operation_and_item_embedding_size+len(conf.need_for_materials), resource_and_material_embedding_size))
-            self.resource_layers.append(ResourceEmbeddingLayer(resource_and_material_embedding_size, operation_and_item_embedding_size+len(conf.need_for_resources), resource_and_material_embedding_size))
-            self.item_layers.append(ItemEmbeddingLayer(operation_and_item_embedding_size, operation_and_item_embedding_size, embedding_hidden_channels, operation_and_item_embedding_size))
-            self.operation_layers.append(OperationEmbeddingLayer(operation_and_item_embedding_size, operation_and_item_embedding_size, resource_and_material_embedding_size, resource_and_material_embedding_size, embedding_hidden_channels, operation_and_item_embedding_size))
-
-    def forward(self, state: State, related_items: Tensor, parents: Tensor, alpha: Tensor):
-        m_embeddings = self.material_layers[0](state.materials, state.operations, state.need_for_materials)
-        r_embbedings = self.resource_layers[0](state.resources, state.operations, state.need_for_resources)
-        i_embbedings = self.item_layers[0](state.items, parents, state.operations, state.item_assembly, state.operation_assembly)
-        o_embbedings = self.operation_layers[0](state.operations, i_embbedings, related_items, m_embeddings, r_embbedings, state.need_for_resources, state.need_for_materials, state.precedences) 
-        for l in range(1, self.nb_embedding_layers):
-            m_embeddings = self.material_layers[l](m_embeddings, o_embbedings, state.need_for_materials)
-            r_embbedings = self.resource_layers[l](r_embbedings, o_embbedings, state.need_for_resources)
-            i_embbedings = self.item_layers[l](i_embbedings, parents, o_embbedings, state.item_assembly, state.operation_assembly)
-            o_embbedings = self.operation_layers[l](o_embbedings, i_embbedings, related_items, m_embeddings, r_embbedings, state.need_for_resources, state.need_for_materials, state.precedences)     
-        pooled_resources = torch.mean(r_embbedings, dim=0, keepdim=True)
-        pooled_items = torch.mean(i_embbedings, dim=0, keepdim=True)
-        pooled_operations = torch.mean(o_embbedings, dim=0, keepdim=True)
-        state_embedding = torch.cat([pooled_items, pooled_operations, pooled_resources], dim=-1)[0]
-        return torch.cat([state_embedding, alpha], dim=0), m_embeddings, r_embbedings, i_embbedings, o_embbedings
-
-class L1_OutousrcingActor(Module):
-    def __init__(self, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, embedding_hidden_channels: int, nb_embedding_layers: int, actor_hidden_channels: int):
-        super(L1_OutousrcingActor, self).__init__()
-        self.shared_embedding_layers = L1_EmbbedingGNN(resource_and_material_embedding_size, operation_and_item_embedding_size, embedding_hidden_channels, nb_embedding_layers)
-        self.actor_input_size = resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 2
-        first_dimension = actor_hidden_channels
-        second_dimenstion = int(actor_hidden_channels / 2)
+class SchedulingActor(Module):
+    def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
+        super(SchedulingActor, self).__init__()
+        self.gnn               = EmbbedingGNN()
+        first_dimension        = actor_dim
+        second_dimenstion      = int(actor_dim / 2)
+        self.resource_pooling  = AttentionalAggregation(Linear(d_model, 1))
+        self.item_pooling      = AttentionalAggregation(Linear(d_model, 1))
+        self.operation_pooling = AttentionalAggregation(Linear(d_model, 1))
         self.actor = Sequential(
-            Linear(self.actor_input_size, first_dimension), ReLU(),
+            Linear(5 * d_model + 1, first_dimension), ReLU(),
             Linear(first_dimension, second_dimenstion), ReLU(),
             Linear(second_dimenstion, 1)
         )
 
-    def forward(self, state: State, actions: list[(int, int)], related_items: Tensor, parents: Tensor, alpha: Tensor):
-        state_embedding, _, _, i_embbedings, _ = self.shared_embedding_layers(state, related_items, parents, alpha)
-        item_ids, outsourcing_choices = zip(*actions)
-        outsourcing_choices_tensor = torch.tensor(outsourcing_choices, dtype=torch.float32, device=parents.device).unsqueeze(1)
-        state_embedding_expanded = state_embedding.unsqueeze(0).expand(len(actions), -1)
-        inputs = torch.cat([i_embbedings[list(item_ids)], outsourcing_choices_tensor, state_embedding_expanded], dim=1)
-        action_logits = self.actor(inputs)
-        return action_logits
-    
-class L1_SchedulingActor(Module):
-    def __init__(self, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, embedding_hidden_channels: int, nb_embedding_layers: int, actor_hidden_channels: int):
-        super(L1_SchedulingActor, self).__init__()
-        self.shared_embedding_layers = L1_EmbbedingGNN(resource_and_material_embedding_size, operation_and_item_embedding_size, embedding_hidden_channels, nb_embedding_layers)
-        self.actor_input_size = 2*resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 1
-        first_dimension = actor_hidden_channels
-        second_dimenstion = int(actor_hidden_channels / 2)
-        self.actor = Sequential(
-            Linear(self.actor_input_size, first_dimension), ReLU(),
-            Linear(first_dimension, second_dimenstion), ReLU(),
-            Linear(second_dimenstion, 1)
-        )
-
-    def forward(self, state: State, actions: list[(int, int)], related_items: Tensor, parents: Tensor, alpha: Tensor):
-        state_embedding, _, r_embbedings, _, o_embbedings = self.shared_embedding_layers(state, related_items, parents, alpha)
+    def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
+        _, r_embbedings, i_embeddings, o_embeddings = self.gnn(state)
+        pooled_resources  = self.resource_pooling(r_embbedings)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_resources], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
         operations_ids, resources_ids = zip(*actions)
-        state_embedding_expanded = state_embedding.unsqueeze(0).expand(len(actions), -1)
-        inputs = torch.cat([o_embbedings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding_expanded], dim=1) # shape = [possible decision, concat embedding]
-        action_logits = self.actor(inputs)
-        return action_logits
+        inputs            = torch.cat([o_embeddings[list(operations_ids)], r_embbedings[list(resources_ids)], state_embedding], dim=1) # shape = [possible decision, concat embedding]
+        return self.actor(inputs)
 
-class L1_MaterialActor(Module):
-    def __init__(self, resource_and_material_embedding_size: int, operation_and_item_embedding_size: int, embedding_hidden_channels: int, nb_embedding_layers: int,  actor_hidden_channels: int):
-        super(L1_MaterialActor, self).__init__()
-        self.shared_embedding_layers = L1_EmbbedingGNN(resource_and_material_embedding_size, operation_and_item_embedding_size, embedding_hidden_channels, nb_embedding_layers)
-        self.actor_input_size = 2*resource_and_material_embedding_size + 3*operation_and_item_embedding_size + 1
-        first_dimension = actor_hidden_channels
-        second_dimenstion = int(actor_hidden_channels / 2)
+class OutousrcingActor(Module):
+    def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
+        super(OutousrcingActor, self).__init__()
+        self.gnn               = EmbbedingGNN()
+        first_dimension        = actor_dim
+        second_dimenstion      = int(actor_dim / 2)
+        self.item_pooling      = AttentionalAggregation(Linear(d_model, 1))
+        self.operation_pooling = AttentionalAggregation(Linear(d_model, 1))
         self.actor = Sequential(
-            Linear(self.actor_input_size, first_dimension), ReLU(),
+            Linear(3 * d_model + 2, first_dimension), ReLU(),
             Linear(first_dimension, second_dimenstion), ReLU(),
             Linear(second_dimenstion, 1)
         )
 
-    def forward(self, state: State, actions: list[(int, int)], related_items: Tensor, parents: Tensor, alpha: Tensor):
-        state_embedding, m_embeddings, _, _, o_embbedings = self.shared_embedding_layers(state, related_items, parents, alpha)
+    def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
+        _, _, i_embeddings, o_embeddings = self.gnn(state)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
+        item_ids, outsourcing_choices = zip(*actions)
+        outsourcing_choices_tensor = torch.tensor(outsourcing_choices, dtype=torch.float32, device=alpha.device).unsqueeze(1)
+        inputs            = torch.cat([i_embeddings[list(item_ids)], outsourcing_choices_tensor, state_embedding], dim=1)
+        return self.actor(inputs)
+    
+class MaterialActor(Module):
+    def __init__(self, d_model: int=D_MODEL, actor_dim: int=ACTOR_DIM):
+        super(MaterialActor, self).__init__()
+        self.gnn               = EmbbedingGNN()
+        first_dimension        = actor_dim
+        second_dimenstion      = int(actor_dim / 2)
+        self.material_pooling  = AttentionalAggregation(Linear(d_model, 1))
+        self.item_pooling      = AttentionalAggregation(Linear(d_model, 1))
+        self.operation_pooling = AttentionalAggregation(Linear(d_model, 1))
+        self.actor = Sequential(
+            Linear(5 * d_model + 1, first_dimension), ReLU(),
+            Linear(first_dimension, second_dimenstion), ReLU(),
+            Linear(second_dimenstion, 1)
+        )
+
+    def forward(self, state: State, actions: list[(int, int)], alpha: Tensor):
+        m_embeddings, _, i_embeddings, o_embeddings = self.gnn(state)
+        pooled_materials  = self.material_pooling(m_embeddings)
+        pooled_items      = self.item_pooling(i_embeddings, index=torch.zeros_like(i_embeddings[:,0], dtype=torch.long))
+        pooled_operations = self.operation_pooling(o_embeddings)
+        state_embedding   = torch.cat([torch.cat([pooled_items, pooled_operations, pooled_materials], dim=-1)[0], alpha], dim=0).unsqueeze(0).expand(len(actions), -1)
         operations_ids, materials_ids = zip(*actions)
-        state_embedding_expanded = state_embedding.unsqueeze(0).expand(len(actions), -1)
-        inputs = torch.cat([o_embbedings[list(operations_ids)], m_embeddings[list(materials_ids)], state_embedding_expanded], dim=1)
-        action_logits = self.actor(inputs)
-        return action_logits
+        inputs            = torch.cat([o_embeddings[list(operations_ids)], m_embeddings[list(materials_ids)], state_embedding], dim=1)
+        return self.actor(inputs)

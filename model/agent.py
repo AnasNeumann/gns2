@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from torch.nn import Module
 from torch.optim import Adam
 
-from model.fast_gnn import *
+from model.gnn import *
 from model.replay_memory import Memory, Action, HistoricalState
 from conf import *
 import torch.nn.functional as F
@@ -99,7 +99,8 @@ class Agent:
         memory: list[Action] = replay_memory.flat_memories[self.action_type]
         if len(memory) == 0:
             return 0.0
-        actions: list[Action] = random.sample(memory, min(BATCH_SIZE, len(memory)))
+        indices = random.sample(range(len(memory)), min(BATCH_SIZE, len(memory)))
+        actions: list[Action] = [memory[i] for i in indices]
         self.optimizer.zero_grad(set_to_none=True)
         loss_accum: float = 0
         for action in actions:

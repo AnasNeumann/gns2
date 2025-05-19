@@ -38,7 +38,7 @@ class Action:
         self.target: int = target
         self.value: int = value
         self.exist_in_memory: bool = False
-        self.workload_removed: int = 0
+        self.workload_removed: int = workload_removed
         self.parent_state: HistoricalState = parent_state
         self.next_state: HistoricalState = None
         self.reward: Tensor = None

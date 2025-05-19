@@ -14,10 +14,7 @@ class Solution:
         self.precedes = [] # Relation between operations (p1, p2, o1, o2, feasible r)
         self.D_setup = [] # Design setup (p, o, r, s)
         self.Cmax = -1 # Cmax and objective
-        self.obj = []
-
-YES = 1
-NO = 0 
+        self.obj = [] 
 
 class Operation():
     def __init__(self):
