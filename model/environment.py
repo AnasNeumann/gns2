@@ -1,7 +1,7 @@
 from model.graph import GraphInstance
 from model.instance import Instance
 from model.replay_memory import Action
-from copy import deepcopy
+
 from torch import Tensor
 from copy import deepcopy
 
@@ -30,24 +30,19 @@ class Environment:
         self.previous_actions: list[Action] = []
         self.current_cmax: int = 0
         self.current_cost: int = 0
-    
+        
     def clone(self):
         env: Environment = Environment(self.i, self.graph.clone(), self.lb_Cmax, self.ub_Cmax, self.lb_cost, self.ub_cost, self.alpha) 
-        env.current_cmax     = self.current_cmax
-        env.current_cost     = self.current_cost
-        env.possible_actions = deepcopy(self.possible_actions)
-        env.action_type      = self.action_type
-        env.action_id        = self.action_id
-        env.execution_time   = self.execution_time
-        env.Q                = self.Q.clone()
-        env.past_envs        = self.past_envs.copy()
+        env.current_cmax = self.current_cmax
+        env.current_cost = self.current_cost
+        env.past_envs = self.past_envs.copy()
         env.past_envs.append(self)
-        if self.previous_actions:
-            _branch: Action = self.previous_actions[0].clone()
+        env.Q = self.Q.clone()
+        _branch: Action = self.previous_actions[0].clone()
+        env.previous_actions.append(_branch)
+        while _branch.next_state.actions_tested:
+            _branch = _branch.next_state.actions_tested[0]
             env.previous_actions.append(_branch)
-            while _branch.next_state.actions_tested:
-                _branch = _branch.next_state.actions_tested[0]
-                env.previous_actions.append(_branch)
         return env
     
     def action_found(self, possible_actions: list[(int, int)], action_type: int, action_id: int, execution_time: int):
