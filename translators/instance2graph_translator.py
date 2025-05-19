@@ -11,8 +11,7 @@ __version__ = "1.0.0"
 __license__ = "Apache 2.0 License"
 
 def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, external_start: int, internal_start: int, must_be_outsourced: bool=False):
-    design_mean_time, physical_mean_time = i.item_processing_time(p, e, total_load=False, max_load=False)
-    design_max_time, physical_max_time   = i.item_processing_time(p, e, total_load=False, max_load=True)
+    design_mean_time, physical_mean_time = i.item_processing_time(p, e, total_load=False)
     childrens = graph.descendants[p][e]
     children_time = 0
     childrens_ops = 0
@@ -94,10 +93,9 @@ def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, ex
                     if not i.is_design[p][o]:
                         pm_ids.append((op_id, graph.materials_i2g[r]))
     _base_design_end = internal_start + design_mean_time
-    _max_design_end = internal_start + design_max_time
     external_start_child = external_start if i.external[p][e] else _base_design_end
     least_childrend_end = _base_design_end
-    max_childrend_end = _max_design_end
+    max_childrend_end = _base_design_end
     least_children_cost = 0
     max_children_cost = 0
     for children in graph.direct_children[p][e]:
@@ -110,7 +108,7 @@ def build_item(i: Instance, graph: GraphInstance, p: int, e: int, head: bool, ex
     least_external_end = least_childrend_end + i.outsourcing_time[p][e]
     max_external_end   = max_childrend_end + i.outsourcing_time[p][e]
     least_internal_end = least_children_cost + physical_mean_time
-    max_internal_end   = max_children_cost + physical_max_time
+    max_internal_end   = max_children_cost + physical_mean_time
     least_end          = least_external_end if must_be_outsourced else min(least_external_end, least_internal_end) if i.external[p][e] else least_internal_end
     max_end            = max_external_end if must_be_outsourced else max(max_external_end, max_internal_end) if i.external[p][e] else max_internal_end
     least_cost         = least_children_cost + (i.external_cost[p][e] if must_be_outsourced else 0)

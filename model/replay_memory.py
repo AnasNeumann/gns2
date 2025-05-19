@@ -38,7 +38,7 @@ class Action:
         self.target: int = target
         self.value: int = value
         self.exist_in_memory: bool = False
-        self.workload_removed: int = workload_removed
+        self.workload_removed: int = 0
         self.parent_state: HistoricalState = parent_state
         self.next_state: HistoricalState = None
         self.reward: Tensor = None
@@ -49,9 +49,9 @@ class Action:
         a: Action
         return self.action_type == a.action_type and self.target == a.target and self.value == a.value
     
-    # reward standardizator = α * (ub_Cmax - lb_Cmax + STD_RATE*ub_Cmax) + (1-α) * (ub_cost - lb_cost + STD_RATE*ub_cost)
+    # reward standardizator = STD_RATE * (α * ub_Cmax + (1-α) * ub_cost)
     def std_reward(self, conf: InstanceConfiguration) -> float:
-        return (conf.alpha * (conf.ub_Cmax - conf.lb_Cmax + STD_RATE*conf.ub_Cmax) + (1-conf.alpha) * (conf.ub_cost - conf.lb_cost + STD_RATE*conf.ub_cost))
+        return ((conf.alpha * conf.ub_Cmax + (1-conf.alpha) * conf.ub_cost) * STD_RATE)
     
     # final reward = α * (Cmax - lb_Cmax) + (1-α) * (cost - lb_cost) / standardizator
     def final_reward(self, final_makespan: int, final_cost: int, std_reward: float, conf: InstanceConfiguration) -> float:
