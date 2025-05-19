@@ -37,7 +37,6 @@ class Action:
         self.action_type: int = action_type
         self.target: int = target
         self.value: int = value
-        self.exist_in_memory: bool = False
         self.workload_removed: int = workload_removed
         self.parent_state: HistoricalState = parent_state
         self.next_state: HistoricalState = None
@@ -110,7 +109,6 @@ class Tree:
                 if _other_first_action.same(action):
                     _found = True
                     _other_first_action.reward = torch.max(_other_first_action.reward, action.reward)
-                    self.global_memory.add_action(_other_first_action)
                     for _next in action.next_state.actions_tested:
                         _next.parent_state = _other_first_action.next_state
                         self.add_or_update_action(action=_next, final_cost=final_cost, final_makespan=final_makespan, need_rewards=False, device=device)
@@ -131,7 +129,6 @@ class Tree:
                 if _existing_action.same(action):
                     _found = True
                     _existing_action.reward = torch.max(_existing_action.reward, action.reward)
-                    self.global_memory.add_action(_existing_action)
                     for _next in action.next_state.actions_tested:
                         _next.parent_state = _existing_action.next_state
                         self.add_or_update_action(action=_next, final_cost=final_cost, final_makespan=final_makespan, need_rewards=False, device=device)
@@ -158,12 +155,7 @@ class Memory:
         self.flat_memories: list[list[Action]] = [self.flat_non_final_outsourcing_memory, self.flat_non_final_scheduling_memory, self.flat_non_final_material_memory]
 
     def add_action(self, action: Action):
-        if not action.exist_in_memory:
-            self.flat_memories[action.action_type].append(action)
-            action.exist_in_memory = True
-            if len(self.flat_memories[action.action_type]) > MEMORY_CAPACITY:
-                removed_action: Action = self.flat_memories[action.action_type].pop(0)
-                removed_action.exist_in_memory = False
+        self.flat_memories[action.action_type].append(action)
 
     #  Add a new instance if ID is not present yet
     def add_instance_if_new(self, id: int) -> Tree:
