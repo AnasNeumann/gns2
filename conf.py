@@ -1,4 +1,5 @@
-SOLVING_REPETITIONS = 10  # solving repetition in inference mode
+TRAIN_RETRY     = 1  # solving repetition in training mode
+TEST_RETRY      = 24  # solving repetition in inference mode
 
 EPS_START       = 0.99   # starting value of epsilon
 EPS_END         = 0.005  # final value of epsilon

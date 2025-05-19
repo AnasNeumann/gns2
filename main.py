@@ -29,25 +29,23 @@ def train(version: int, itrs: int, agents: Agents, device: str, path: str, debug
     pre_train(agents=agents, path=path, device=device, version=version, itrs=itrs, debug=debug)
     
 # Solve the target instance (size, id) only using inference
-def solve_one_instance(instance: Instance, size: str, agents: Agents, device: str, path: str, repetitions: int=SOLVING_REPETITIONS, debug: bool=False):
+def solve_one_instance(instance: Instance, size: str, agents: Agents, device: str, path: str, debug: bool=False):
     start_time = systime.time()
     best_cmax = -1.0
     best_cost = -1.0
     best_obj = -1.0
-    for rep in range(repetitions):
-        print(f"SOLVING INSTANCE {size}_{instance.id} (repetition {rep+1}/{repetitions})...")
-        current_cmax, current_cost = solve(instance, agents=agents, train=False, device=device, greedy=(rep==0), debug=debug)
-        _obj = objective_value(current_cmax, current_cost, instance.w_makespan)/100
-        if best_obj < 0 or _obj < best_obj:
-            best_obj = _obj
-            best_cmax = current_cmax
-            best_cost = current_cost
+    print(f"SOLVING INSTANCE {size}_{instance.id}...")
+    current_cmax, current_cost = solve(instance, agents=agents, train=False, device=device, greedy=True, debug=debug)
+    _obj = objective_value(current_cmax, current_cost, instance.w_makespan)/100
+    if best_obj < 0 or _obj < best_obj:
+        best_obj = _obj
+        best_cmax = current_cmax
+        best_cost = current_cost
     final_metrics = pd.DataFrame({
         'index': [instance.id],
         'value': [best_obj],
         'cmax': [best_cmax],
         'cost': [best_cost],
-        'repetitions': [repetitions],
         'computing_time': [systime.time()-start_time],
         'device_used': [device]
     })

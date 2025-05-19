@@ -119,9 +119,10 @@ def get_scheduling_and_material_use_actions(Q: Queue, instance: Instance, graph:
 def get_feasible_actions(Q: Queue, instance: Instance, graph: GraphInstance, required_types_of_resources: list[list[list[int]]], required_types_of_materials: list[list[list[int]]]):
     actions = [] if not Q.item_queue else get_outourcing_actions(Q, instance, graph)
     type = OUTSOURCING
-    execution_times: list[int] = []
     if not actions:
         actions, execution_times, type = get_scheduling_and_material_use_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
+    else:
+        execution_times: list[int] = [0] * len(actions)
     return actions, type, execution_times
 
 # #################################
@@ -366,79 +367,107 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
 # Main function to solve an instance from sratch 
 def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
-    DEBUG_PRINT = debug_printer(debug)
-    graph, previous_operations, next_operations = translate(i=instance, device=device)
-    required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
-    alpha: Tensor = torch.tensor([instance.w_makespan], device=device)
-    if train:
-        REPLAY_MEMORY.init_tree(alpha, graph.lb_Cmax, graph.lb_cost, graph.ub_Cmax, graph.ub_cost)
-        _LOCAL_ACTION_TREE: Action = None
-        _last_action: Action = None
-    current_cmax = 0
-    current_cost = 0
-    DEBUG_PRINT(f"Init Cmax: {graph.lb_Cmax}->{graph.ub_Cmax} - Init cost: {graph.lb_cost}$ - Max cost: {graph.ub_cost}$")
-    Q = init_queue(instance, graph)
-    while not Q.done():
-        workload_removed: int = 0
-        poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
-        DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
-        state: State = graph.to_state(device=device)
+    DEBUG_PRINT               = debug_printer(debug)
+    best_cmax: int            = -1
+    best_cost: int            = -1
+    alpha: Tensor             = torch.tensor([1.0], device=device)
+    nb_repetitions: int       = TRAIN_RETRY if train else TEST_RETRY
+    retry: int                = 1
+    banned_step: int          = -1
+    past_decisions: list[int] = []
+    while retry <= nb_repetitions:
+        graph, previous_operations, next_operations = translate(i=instance, device=device)
+        required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
+        DEBUG_PRINT(f"Init Cmax: {graph.lb_Cmax}->{graph.ub_Cmax} - Init cost: {graph.lb_cost}$ - Max cost: {graph.ub_cost}$")
+        current_cmax: int    = 0
+        current_cost: int    = 0
+        Q: Queue             = init_queue(instance, graph)
+        step: int            = 0
+        decisions: list[int] = []
         if train:
-            state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
-            if REPLAY_MEMORY.init_state is None:
-                REPLAY_MEMORY.init_state = state_before_action
-        idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
-        if actions_type == OUTSOURCING: # Outsourcing action
-            item_id, outsourcing_choice = poss_actions[idx]
-            target = item_id
-            value = outsourcing_choice
-            p, e = graph.items_g2i[item_id]
-            if outsourcing_choice == YES:
-                _outsourcing_time, _end_date, _price = outsource_item(Q, graph, instance, item_id, required_types_of_resources, required_types_of_materials, enforce_time=False)
-                apply_outsourcing_to_direct_parent(Q, instance, graph, previous_operations, p, e, _end_date)
-                current_cmax = max(current_cmax, _end_date)
-                current_cost = current_cost + _price
-                Q.remove_item(item_id)
-                workload_removed = graph.outsourced_item_time_with_children[p][e] - graph.approximate_item_local_time_with_children[p][e]
-                DEBUG_PRINT(f"Outsourcing item {item_id} -> ({p},{e}) [start={_outsourcing_time}, end={_end_date}]...")
-            else:
-                workload_removed = graph.approximate_item_local_time[p][e] - instance.outsourcing_time[p][e]
-                Q.remove_item(item_id)
-                graph.update_item(item_id, [('outsourced', NO), ('can_be_outsourced', NO)])
-                DEBUG_PRINT(f"Producing item {item_id} -> ({p},{e}) locally...")
-        elif actions_type == SCHEDULING: # scheduling action
-            operation_id, resource_id = poss_actions[idx]
-            target = operation_id
-            value = resource_id
-            p, o = graph.operations_g2i[operation_id]
-            DEBUG_PRINT(f"Scheduling: operation {operation_id} -> ({p},{o}) on resource {graph.resources_g2i[resource_id]} at time {execution_times[idx]}...")     
-            _operation_end, _actual_scheduling_time, workload_removed = schedule_operation(graph, instance, operation_id, resource_id, required_types_of_resources, execution_times[idx])
-            if instance.simultaneous[p][o]:
-                DEBUG_PRINT("\t >> Simulatenous...")
-                _operation_end, total_execution_time = schedule_other_resources_if_simultaneous(instance, graph, required_types_of_resources, required_types_of_materials, operation_id, resource_id, p, o, _actual_scheduling_time, _operation_end)
-                workload_removed += total_execution_time
-            if graph.is_operation_complete(operation_id):
-                Q.remove_operation(operation_id)
-                try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
-            DEBUG_PRINT(f"End of scheduling at time {_operation_end}...")
-            current_cmax = max(current_cmax, _operation_end)
-        else: # Material use action
-            operation_id, material_id = poss_actions[idx]
-            target = operation_id
-            value = material_id
-            p, o = graph.operations_g2i[operation_id]
-            DEBUG_PRINT(f"Material use: operation {operation_id} -> ({p},{o}) on material {graph.materials_g2i[material_id]} at time {execution_times[idx]}...")  
-            apply_use_material(graph, instance, operation_id, material_id, required_types_of_materials, execution_times[idx])
-            if graph.is_operation_complete(operation_id):
-                Q.remove_operation(operation_id)
-                try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
-            current_cmax = max(current_cmax, execution_times[idx])
+            REPLAY_MEMORY.init_tree(alpha, graph.lb_Cmax, graph.lb_cost, graph.ub_Cmax, graph.ub_cost)
+            _LOCAL_ACTION_TREE: Action = None
+            _last_action: Action = None
+        while not Q.done():
+            workload_removed: int = 0
+            poss_actions, actions_type, execution_times = get_feasible_actions(Q, instance, graph, required_types_of_resources, required_types_of_materials)
+            DEBUG_PRINT(f"Current possible {ACTIONS_NAMES[actions_type]} actions: {poss_actions} at times: {execution_times}...")
+            state: State = graph.to_state(device=device)
+            if train:
+                state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
+                if REPLAY_MEMORY.init_state is None:
+                    REPLAY_MEMORY.init_state = state_before_action
+            if step < banned_step: # (1/3) forced to remake the previous decision
+                idx: int = past_decisions[step]
+            elif step == banned_step: # (2/3) remove the banned decision to foce a change
+                banned: int = past_decisions[step]
+                poss_actions_without_banned = poss_actions[:banned] + poss_actions[banned+1:]
+                _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode, greedy)
+                idx = _i if _i < banned else _i + 1
+            else: # (3/3) take a brand new decision freely
+                idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
+            decisions.append(idx)
+            if actions_type == OUTSOURCING: # Outsourcing action
+                item_id, outsourcing_choice = poss_actions[idx]
+                target = item_id
+                value = outsourcing_choice
+                p, e = graph.items_g2i[item_id]
+                if outsourcing_choice == YES:
+                    _outsourcing_time, _end_date, _price = outsource_item(Q, graph, instance, item_id, required_types_of_resources, required_types_of_materials, enforce_time=False)
+                    apply_outsourcing_to_direct_parent(Q, instance, graph, previous_operations, p, e, _end_date)
+                    current_cmax = max(current_cmax, _end_date)
+                    current_cost = current_cost + _price
+                    Q.remove_item(item_id)
+                    workload_removed = graph.outsourced_item_time_with_children[p][e] - graph.approximate_item_local_time_with_children[p][e]
+                    DEBUG_PRINT(f"Outsourcing item {item_id} -> ({p},{e}) [start={_outsourcing_time}, end={_end_date}]...")
+                else:
+                    workload_removed = graph.approximate_item_local_time[p][e] - instance.outsourcing_time[p][e]
+                    Q.remove_item(item_id)
+                    graph.update_item(item_id, [('outsourced', NO), ('can_be_outsourced', NO)])
+                    DEBUG_PRINT(f"Producing item {item_id} -> ({p},{e}) locally...")
+            elif actions_type == SCHEDULING: # scheduling action
+                operation_id, resource_id = poss_actions[idx]
+                target = operation_id
+                value = resource_id
+                p, o = graph.operations_g2i[operation_id]
+                DEBUG_PRINT(f"Scheduling: operation {operation_id} -> ({p},{o}) on resource {graph.resources_g2i[resource_id]} at time {execution_times[idx]}...")     
+                _operation_end, _actual_scheduling_time, workload_removed = schedule_operation(graph, instance, operation_id, resource_id, required_types_of_resources, execution_times[idx])
+                if instance.simultaneous[p][o]:
+                    DEBUG_PRINT("\t >> Simulatenous...")
+                    _operation_end, total_execution_time = schedule_other_resources_if_simultaneous(instance, graph, required_types_of_resources, required_types_of_materials, operation_id, resource_id, p, o, _actual_scheduling_time, _operation_end)
+                    workload_removed += total_execution_time
+                if graph.is_operation_complete(operation_id):
+                    Q.remove_operation(operation_id)
+                    try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
+                DEBUG_PRINT(f"End of scheduling at time {_operation_end}...")
+                current_cmax = max(current_cmax, _operation_end)
+            else: # Material use action
+                operation_id, material_id = poss_actions[idx]
+                target = operation_id
+                value = material_id
+                p, o = graph.operations_g2i[operation_id]
+                DEBUG_PRINT(f"Material use: operation {operation_id} -> ({p},{o}) on material {graph.materials_g2i[material_id]} at time {execution_times[idx]}...")  
+                apply_use_material(graph, instance, operation_id, material_id, required_types_of_materials, execution_times[idx])
+                if graph.is_operation_complete(operation_id):
+                    Q.remove_operation(operation_id)
+                    try_to_open_next_operations(Q, graph, instance, previous_operations, next_operations, operation_id)
+                current_cmax = max(current_cmax, execution_times[idx])
+            if train:
+                _last_action = Action(idx, actions_type, target, value, workload_removed, state_before_action if _LOCAL_ACTION_TREE is not None else None)
+                if _LOCAL_ACTION_TREE is None:
+                    _LOCAL_ACTION_TREE = _last_action
+            step += 1
         if train:
-            _last_action = Action(idx, actions_type, target, value, workload_removed, state_before_action if _LOCAL_ACTION_TREE is not None else None)
-            if _LOCAL_ACTION_TREE is None:
-                _LOCAL_ACTION_TREE = _last_action
-    if train:
-        _last_action.next_state = HistoricalState(REPLAY_MEMORY, graph.to_state(device=device), [], current_cmax, current_cost, _last_action)
-        REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True, device=device)
-    else:
-        return current_cmax, current_cost
+            _last_action.next_state = HistoricalState(REPLAY_MEMORY, graph.to_state(device=device), [], current_cmax, current_cost, _last_action)
+            REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True, device=device)
+
+        if current_cmax <= best_cmax or best_cmax < 0:
+            best_cmax       = current_cmax
+            best_cost       = current_cost
+            nb_repetitions += 1
+            past_decisions  = decisions
+        banned_step = random.randint(0, len(past_decisions)-1)
+        retry += 1
+        if retry <= nb_repetitions:
+            print(f"RETRY {retry}/{nb_repetitions}: best nb of steps = {len(past_decisions)} - last nb of steps = {len(decisions)} - next banned step = {banned_step}...")
+    return best_cmax, best_cost
