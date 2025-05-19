@@ -16,6 +16,9 @@ class Solution:
         self.Cmax = -1 # Cmax and objective
         self.obj = []
 
+YES = 1
+NO = 0 
+
 class Operation():
     def __init__(self):
         self.id: int = 0

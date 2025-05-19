@@ -239,13 +239,12 @@ def translate(i: Instance, device: str):
                     remaining_demand = float(remaining_quantity_needed)))
     graph.resources_i2g = graph.build_i2g_1D(graph.resources_g2i, i.nb_resources)
     graph.materials_i2g = graph.build_i2g_1D(graph.materials_g2i, i.nb_resources)
-    lb_Cmax, ub_Cmax, lb_cost, ub_cost = 0, 0, 0, 0
     for p in i.loop_projects():
         _, project_lb_end, project_ub_end, project_lb_cost, project_ub_cost = build_item(i, graph, p, e=i.project_head(p), head=True, external_start=0, internal_start=0, must_be_outsourced=False)
-        lb_Cmax = max(graph.lb_Cmax, project_lb_end)
-        ub_Cmax = max(graph.ub_Cmax, project_ub_end)
-        lb_cost += project_lb_cost
-        ub_cost += project_ub_cost
+        graph.lb_Cmax = max(graph.lb_Cmax, project_lb_end)
+        graph.ub_Cmax = max(graph.ub_Cmax, project_ub_end)
+        graph.lb_cost += project_lb_cost
+        graph.ub_cost += project_ub_cost
     graph.operations_i2g = graph.build_i2g_2D(graph.operations_g2i)
     graph.items_i2g = graph.build_i2g_2D(graph.items_g2i)
     graph.add_dummy_item(device=device)
@@ -253,4 +252,4 @@ def translate(i: Instance, device: str):
     graph.previous_operations, graph.next_operations = i.build_next_and_previous_operations()
     build_lower_bounds(i, graph, graph.next_operations)
     build_required_resources(i, graph)
-    return graph, lb_Cmax, ub_Cmax, lb_cost, ub_cost
+    return graph 
