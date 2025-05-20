@@ -57,7 +57,7 @@ def search_object_by_id(objects: list[generic_object], id: int):
             return obj
     return None
 
-def objective_value(cmax: int, cost: int, cmax_weight: float):
+def objective_value(cmax: int, cost: int, cmax_weight: float) -> int:
     cmax_weight = int(100 * cmax_weight)
     cost_weight = 100 - cmax_weight
     return cmax*cmax_weight + cost*cost_weight

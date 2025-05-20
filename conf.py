@@ -11,7 +11,7 @@ LEARNING_RATE   = 2e-4   # learning rate for the policy model
 BATCH_SIZE      = 64     # batch size at training time
 EPISODES        = 8000   # number of training episodes
 SWITCH_INSTANCE = 100    # number of episodes before switching instance
-SAVING_ITRS     = 100    # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
+SAVING_ITRS     = 1000   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks
 TRAINING_ITRS   = 5      # number of solving episodes before training the agents!
 
@@ -36,8 +36,8 @@ DROPOUT   = 0.1
 HEADS     = 4
 ACTOR_DIM = 64
 
-W_FINAL  = 0.85  # weight final values versus by-step change in reward computation 
-STD_RATE = 0.1   # standardization rate in reward computation
+W_FINAL  = 0.9  # weight final values versus by-step change in reward computation 
+STD_RATE = 0.07 # standardization rate in reward computation
 
 TRAINSET = 0
 TESTSET  = 1

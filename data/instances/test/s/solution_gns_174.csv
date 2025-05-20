@@ -1,2 +1,2 @@
-index,value,cmax,cost,repetitions,computing_time,device_used
-174,3776.08,7954.0,1426.0,10,0.3875420093536377,cpu
+index,value,cmax,cost,computing_time,device_used
+174,3797.68,8014.0,1426.0,0.7345340251922607,cpu

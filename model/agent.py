@@ -70,6 +70,7 @@ class Agent:
         self.loss.save(f"{path}{self.name}_loss")
 
     def load(self, path: str, version: int, itrs: int, device: str):
+        print(f"version: {version} - itrs: {itrs} - loading {self.name} agent...")
         self.policy.load_state_dict(torch.load(f"{path}{self.name}_weights_{version}_{itrs}.pth", map_location=torch.device(device), weights_only=True))
         self.optimizer.load_state_dict(torch.load(f"{path}{self.name}_optimizer_{version}_{itrs}.pth", map_location=torch.device(device), weights_only=True))
 

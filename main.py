@@ -4,7 +4,6 @@ import time as systime
 import pandas as pd
 import torch
 torch.autograd.set_detect_anomaly(True)
-# torch._dynamo.config.capture_scalar_outputs = True
 
 from conf import *
 from tools.common import to_bool, directory, objective_value
@@ -58,11 +57,11 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
     dataset: Dataset = Dataset(base_path=path)
     dataset.load_test_instances()
     for i in dataset.test_instances:
-        solve_one_instance(instance=i, size=str(i.size), agents=agents, device=device, path=path, repetitions=SOLVING_REPETITIONS, debug=debug)
+        solve_one_instance(instance=i, size=str(i.size), agents=agents, device=device, path=path, debug=debug)
 
 def build_agents(device: str, version: int, itrs: int, path: str, interactive: bool):
     agents: Agents = Agents(device=device, base_path=path, version=version, interactive=interactive)
-    if version >1:
+    if version > 0:
         agents.load(itrs)
     return agents
 
@@ -94,7 +93,7 @@ if __name__ == '__main__':
         if to_bool(args.target):
             # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151  --interactive=false
             dataset: Dataset = Dataset(base_path=args.path)
-            solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, repetitions=1, debug=_debug_mode)
+            solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, debug=_debug_mode)
         else:
             # python main.py --train=false --target=false --path=./ --mode=prod --version=1 --itrs=0  --interactive=false
             solve_all_instances(version=_version, agents=agents, device=_device, path=args.path, debug=_debug_mode)

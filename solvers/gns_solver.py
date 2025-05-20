@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from conf import * 
-from tools.common import debug_printer
+from tools.common import debug_printer, objective_value
 from tools.tensors import tensors_to_probs
 
 from model.replay_memory import Tree, Action, HistoricalState
@@ -376,6 +376,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
     banned_step: int                       = -1
     past_decision_made: list[int]          = []
     past_nb_decisions: list[int]           = []
+    past_decision_type: list[int]          = []
     while retry <= nb_repetitions:
         graph, previous_operations, next_operations = translate(i=instance, device=device)
         required_types_of_resources, required_types_of_materials, graph.res_by_types = build_required_resources(instance, graph)
@@ -386,6 +387,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
         step: int                = 0
         decision_made: list[int] = []
         nb_decisions: list[int]  = []
+        decision_type: list[int] = []
         if train:
             REPLAY_MEMORY.init_tree(alpha, graph.lb_Cmax, graph.lb_cost, graph.ub_Cmax, graph.ub_cost)
             _LOCAL_ACTION_TREE: Action = None
@@ -399,17 +401,27 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                 state_before_action: HistoricalState = HistoricalState(REPLAY_MEMORY, state, poss_actions, current_cmax, current_cost, _last_action)
                 if REPLAY_MEMORY.init_state is None:
                     REPLAY_MEMORY.init_state = state_before_action
-            if step < banned_step: # (1/3) forced to remake the previous decision
+            if step < banned_step: # (1/4) forced to remake the previous decision
                 idx: int = past_decision_made[step]
-            elif step == banned_step: # (2/3) remove the banned decision to foce a change
-                banned: int = past_decision_made[step]
-                poss_actions_without_banned = poss_actions[:banned] + poss_actions[banned+1:]
-                _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode, greedy)
-                idx = _i if _i < banned else _i + 1
-            else: # (3/3) take a brand new decision freely
+            elif step == banned_step: 
+                if actions_type == OUTSOURCING: # (2/4) switch the banned outsourcing decision to foce a change
+                    item_id, past_choice = poss_actions[past_decision_made[step]]
+                    new_choice = YES if past_choice == NO else NO
+                    try:
+                        target = (item_id, new_choice)
+                        idx = poss_actions.index(target)
+                    except ValueError:
+                        idx = random.choice(range(len(poss_actions)))
+                else: # (3/4) remove the banned scheduling decision to foce a change
+                    banned: int = past_decision_made[step]
+                    poss_actions_without_banned = poss_actions[:banned] + poss_actions[banned+1:]
+                    _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode, greedy)
+                    idx = _i if _i < banned else _i + 1
+            else: # (4/4) take a brand new decision freely
                 idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
             decision_made.append(idx)
             nb_decisions.append(len(poss_actions))
+            decision_type.append(actions_type)
             if actions_type == OUTSOURCING: # Outsourcing action
                 item_id, outsourcing_choice = poss_actions[idx]
                 target = item_id
@@ -421,10 +433,10 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                     current_cmax = max(current_cmax, _end_date)
                     current_cost = current_cost + _price
                     Q.remove_item(item_id)
-                    workload_removed = graph.outsourced_item_time_with_children[p][e] - graph.approximate_item_local_time_with_children[p][e]
+                    workload_removed = graph.approximate_item_local_time_with_children[p][e] - graph.outsourced_item_time_with_children[p][e]
                     DEBUG_PRINT(f"Outsourcing item {item_id} -> ({p},{e}) [start={_outsourcing_time}, end={_end_date}]...")
                 else:
-                    workload_removed = graph.approximate_item_local_time[p][e] - instance.outsourcing_time[p][e]
+                    workload_removed = instance.outsourcing_time[p][e] - graph.approximate_item_local_time[p][e]
                     Q.remove_item(item_id)
                     graph.update_item(item_id, [('outsourced', NO), ('can_be_outsourced', NO)])
                     DEBUG_PRINT(f"Producing item {item_id} -> ({p},{e}) locally...")
@@ -464,15 +476,16 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
             _last_action.next_state = HistoricalState(REPLAY_MEMORY, graph.to_state(device=device), [], current_cmax, current_cost, _last_action)
             REPLAY_MEMORY.add_or_update_action(_LOCAL_ACTION_TREE, final_makespan=current_cmax, final_cost=current_cost, need_rewards=True, device=device)
 
-        if current_cmax <= best_cmax or best_cmax < 0:
+        if objective_value(current_cmax, current_cost, instance.w_makespan) <= objective_value(best_cmax, best_cost, instance.w_makespan) or best_cmax < 0:
             best_cmax           = current_cmax
             best_cost           = current_cost
             nb_repetitions     += 1
             past_decision_made  = decision_made
             past_nb_decisions   = nb_decisions
+            past_decision_type  = decision_type
 
         banned_step +=1
-        while banned_step < len(past_decision_made) and past_nb_decisions[banned_step] < 2:
+        while banned_step < len(past_decision_made) and (past_nb_decisions[banned_step] < 2 or past_decision_type[banned_step] == MATERIAL_USE):
             banned_step +=1
         if banned_step >= len(past_decision_made) or past_nb_decisions[banned_step] < 2:
             break
