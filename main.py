@@ -61,7 +61,7 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
 
 def build_agents(device: str, version: int, itrs: int, path: str, interactive: bool):
     agents: Agents = Agents(device=device, base_path=path, version=version, interactive=interactive)
-    if version > 0:
+    if version > 1 or itrs > 0:
         agents.load(itrs)
     return agents
 

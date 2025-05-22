@@ -14,7 +14,7 @@ SWITCH_INSTANCE = 50     # number of episodes before switching instance
 SAVING_ITRS     = 1000   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks
 TRAINING_ITRS   = 5      # number of solving episodes before training the agents!
-MEMORY_CAPACITY = 100000 # number of transitions in the replay memory
+MEMORY_CAPACITY = 2**16  #  number of transitions in the replay memory(131072)
 
 YES = 1.0 # feature value for YES 
 NO  = 0.0 # feature value for NO

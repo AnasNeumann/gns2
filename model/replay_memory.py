@@ -227,6 +227,15 @@ class Memory:
         self.buff_mat   = PrioritisedBuffer(cap, alpha)
         self.flat_memories = [self.buff_out, self.buff_sched, self.buff_mat]
 
+    #  Add a new instance if ID is not present yet
+    def add_instance_if_new(self, id: int) -> Tree:
+        for memory in self.instances:
+            if memory.instance_id == id:
+                return memory
+        new_memory: Tree = Tree(global_memory=self, instance_id=id)
+        self.instances.append(new_memory)
+        return new_memory
+
     def add_action(self, action: Action):
         if not action.exist_in_memory:
             self.flat_memories[action.action_type].append(action)
@@ -242,6 +251,6 @@ class Memory:
         return actions, idxs, w
 
     def update_priorities(self, action_type: int, idxs, td_errors):
-        prios = (td_errors.abs() + 1e-5).tolist()
+        prios = td_errors.view(-1).tolist()
         self.flat_memories[action_type].update_priorities(idxs, prios)
         self.n_updates += 1

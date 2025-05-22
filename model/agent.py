@@ -103,7 +103,9 @@ class Agent:
         is_w = is_w.to(self.device)
         self.optimizer.zero_grad(set_to_none=True)
         td_errors = []
+        loss_accum: float = 0
         for k, action in enumerate(actions):
+            action: Action
             history: HistoricalState = action.parent_state
             _alpha: Tensor           = history.tree.conf.alpha
             Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _alpha) # Qπ(s,a)
@@ -116,7 +118,7 @@ class Agent:
                 next_target_agent: Module   = self.multi_agents_system.agents[next_state.actions_tested[0].action_type].target
                 with torch.no_grad(): # max_a′ Q_target_{who_acts_next}(s′,a′)
                     Q_next_logits: Tensor   = next_target_agent(next_state.state, next_state.possible_actions, _alpha)
-                    max_Q_next: Tensor          = Q_next_logits.max()
+                    max_Q_next: Tensor      = Q_next_logits.max()
                 target_val: Tensor          = action.reward + GAMMA * max_Q_next
             d_k = (target_val - Q_sa).detach()
             td_errors.append(d_k)
@@ -126,7 +128,7 @@ class Agent:
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), MAX_GRAD_NORM)
         self.optimizer.step()
         with torch.no_grad():
-            new_p = torch.stack(td_errors).abs() + 1e-5
+            new_p = torch.stack(td_errors).abs().squeeze() + 1e-5
         replay_memory.update_priorities(self.action_type, idxs, new_p)
         return loss_accum / len(actions)
 
