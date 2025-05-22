@@ -3,7 +3,6 @@ from conf import *
 import torch
 from torch import Tensor
 from model.gnn import State
-import random 
 
 # ########################################################
 # =*= A REPLAY MEMORY DESTINGUISHING BETWEEN INSTANCES =*=
@@ -146,86 +145,14 @@ class Tree:
                     _a = _a.next_state.actions_tested[0]
                     self.global_memory.add_action(_a)
                 return action
-            
-class _SegmentTree:
-    """Sum-tree for priorities (power of two capacity for simplicity)."""
-    def __init__(self, capacity: int):
-        assert capacity & (capacity - 1) == 0, "cap must be power of 2"
-        self.cap  = capacity
-        self.tree = [0.0] * (2 * capacity)
-
-    def _propagate(self, idx: int, change: float):
-        while idx:
-            idx //= 2
-            self.tree[idx] += change
-
-    def update(self, idx: int, new_p: float):
-        """idx is data index (0-based)."""
-        tree_idx = idx + self.cap
-        change   = new_p - self.tree[tree_idx]
-        self.tree[tree_idx] = new_p
-        self._propagate(tree_idx, change)
-
-    def total(self) -> float:
-        return self.tree[1]
-
-    def find_prefix(self, mass: float) -> int:
-        idx = 1
-        while idx < self.cap:
-            if self.tree[2 * idx] >= mass:
-                idx = 2 * idx
-            else:
-                mass -= self.tree[2 * idx]
-                idx = 2 * idx + 1
-        return idx - self.cap  # data index
-
-class PrioritisedBuffer:
-    def __init__(self, capacity: int, alpha: float = 0.6):
-        self.alpha      = alpha
-        self.capacity   = capacity
-        self.pos        = 0
-        self.size       = 0
-        self.priorities = _SegmentTree(capacity)
-        self.max_p      = 1.0
-        self.data: list[Action] = [None]*capacity
-        
-    def append(self, act: Action):
-        self.data[self.pos] = act
-        self.priorities.update(self.pos, self.max_p**self.alpha)
-        self.pos  = (self.pos + 1) % self.capacity
-        self.size = min(self.size + 1, self.capacity)
-
-    def sample(self, batch: int, beta: float):
-        seg_total = self.priorities.total()
-        step = seg_total / batch
-        indices, probs = [], []
-        for i in range(batch):
-            mass = random.uniform(i*step, (i+1)*step)
-            idx = self.priorities.find_prefix(mass)
-            indices.append(idx)
-            probs.append(self.priorities.tree[idx + self.priorities.cap])
-        probs = torch.tensor(probs, dtype=torch.float32)
-        sampling_p = probs / seg_total
-        weights = (self.size * sampling_p).pow(-beta)
-        weights /= weights.max()
-        actions = [self.data[i] for i in indices]
-        return actions, indices, weights
-
-    def update_priorities(self, indices, new_p):
-        for i, p in zip(indices, new_p):
-            p = float(p)
-            self.priorities.update(i, p ** self.alpha)
-            self.max_p = max(self.max_p, p)
 
 class Memory:
-    def __init__(self, cap: int = MEMORY_CAPACITY, alpha: float = 0.6, beta0: float = 0.4, beta_steps: int = 2_000_000):
+    def __init__(self):
         self.instances: list[Tree] = []
-        self.beta0, self.beta_steps = beta0, beta_steps
-        self.n_updates  = 0
-        self.buff_out   = PrioritisedBuffer(cap, alpha)
-        self.buff_sched = PrioritisedBuffer(cap, alpha)
-        self.buff_mat   = PrioritisedBuffer(cap, alpha)
-        self.flat_memories = [self.buff_out, self.buff_sched, self.buff_mat]
+        self.flat_non_final_outsourcing_memory: list[Action] = []
+        self.flat_non_final_scheduling_memory: list[Action] = []
+        self.flat_non_final_material_memory: list[Action] = []
+        self.flat_memories: list[list[Action]] = [self.flat_non_final_outsourcing_memory, self.flat_non_final_scheduling_memory, self.flat_non_final_material_memory]
 
     #  Add a new instance if ID is not present yet
     def add_instance_if_new(self, id: int) -> Tree:
@@ -240,17 +167,6 @@ class Memory:
         if not action.exist_in_memory:
             self.flat_memories[action.action_type].append(action)
             action.exist_in_memory = True
-    
-    # Linear annealing β⟶1
-    def _beta(self):
-        return min(1.0, self.beta0 + (1.0 - self.beta0) * (self.n_updates / self.beta_steps))
-
-    def sample(self, action_type: int, batch: int):
-        beta = self._beta()
-        actions, idxs, w = self.flat_memories[action_type].sample(batch, beta)
-        return actions, idxs, w
-
-    def update_priorities(self, action_type: int, idxs, td_errors):
-        prios = td_errors.view(-1).tolist()
-        self.flat_memories[action_type].update_priorities(idxs, prios)
-        self.n_updates += 1
+            if len(self.flat_memories[action.action_type]) > MEMORY_CAPACITY:
+                removed_action: Action = self.flat_memories[action.action_type].pop(0)
+                removed_action.exist_in_memory = False

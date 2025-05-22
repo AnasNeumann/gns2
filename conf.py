@@ -10,7 +10,7 @@ TAU             = 0.003  # update rate of the target network
 LEARNING_RATE   = 2e-4   # learning rate for the policy model
 BATCH_SIZE      = 64     # batch size at training time
 EPISODES        = 10000  # number of training episodes
-SWITCH_INSTANCE = 50     # number of episodes before switching instance
+SWITCH_INSTANCE = 100    # number of episodes before switching instance
 SAVING_ITRS     = 1000   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks
 TRAINING_ITRS   = 5      # number of solving episodes before training the agents!
@@ -40,7 +40,9 @@ ACTOR_DIM = 64
 W_FINAL    = 0.9  # weight final values versus by-step change in reward computation 
 STD_RATE   = 0.07 # standardization rate in reward computation
 W_WORKLOAD = 0.2  # weight of workload in comparison with actual end
-GREED_RATE = 0.85 # percentage of chance to use greedy solving
+
+GREED_TRAINING_RATE = 0.8 # percentage of chance to use greedy solving while training
+GREED_TESTING_RATE  = 1.0 # percentage of chance to use greedy solving while testing
 
 TRAINSET = 0
 TESTSET  = 1
