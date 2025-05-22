@@ -33,7 +33,8 @@ def train(agents: Agents, path: str, device: str, version:int, itrs: int, debug:
     dataset: Dataset = Dataset(path)
     dataset.load_training_instances(version)
     instance, tree = get_instance_and_tree(dataset, agents)
-    for episode in range(1, EPISODES+1):
+    _nb_epsides: int = EPISODES[version-1]
+    for episode in range(1, _nb_epsides+1):
         instance, tree = get_instance_and_tree(dataset, agents, episode, instance, tree)
         solve(instance=instance, agents=agents, train=True, device=device, REPLAY_MEMORY=tree, episode=episode, debug=debug)
         if episode % TRAINING_ITRS == 0: 
@@ -41,7 +42,7 @@ def train(agents: Agents, path: str, device: str, version:int, itrs: int, debug:
             print(f"Training episode: {episode} [time={(systime.time()-_start_time):.2f}] -- instance: ({instance.size}, {instance.id}) -- Outsourcing Loss: {hl[OUTSOURCING]:.2f} -- Scheduling Loss: {hl[SCHEDULING]:.2f} -- Material Use Loss: {hl[MATERIAL_USE]:.2f}")
         else:
             print(f"Training episode: {episode} [time={(systime.time()-_start_time):.2f}] -- instance: ({instance.size}, {instance.id}) -- No optimization yet...")
-        if episode % SAVING_ITRS == 0 or episode == EPISODES: 
+        if episode % SAVING_ITRS == 0 or episode == _nb_epsides: 
             print("...time to save current policy models, optimizers, and the replay memory!")
             agents.save(itrs + episode)
     print("--- =*= END_OF_FILE =*= ---")

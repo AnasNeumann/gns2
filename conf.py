@@ -9,7 +9,7 @@ DELTA           = 2.0    # Huber loss "threshold" parameter (distinguishing betw
 TAU             = 0.003  # update rate of the target network
 LEARNING_RATE   = 2e-4   # learning rate for the policy model
 BATCH_SIZE      = 64     # batch size at training time
-EPISODES        = 10000  # number of training episodes
+EPISODES        = [10000, 8000, 6000, 4000, 3000] # number of training episodes
 SWITCH_INSTANCE = 100    # number of episodes before switching instance
 SAVING_ITRS     = 1000   # number of episodes before saving agents: model weights, optimizers, replay memory, and losses (for security)
 MAX_GRAD_NORM   = 5.0    # gradient normalization for really deep networks
@@ -46,5 +46,5 @@ GREED_TESTING_RATE  = 1.0 # percentage of chance to use greedy solving while tes
 
 TRAINSET = 0
 TESTSET  = 1
-TRAINING_SIZES = [['s'], ['s', 'm'], ['s', 'm', 'l'], ['s', 'm', 'l', 'xl'], ['s', 'm', 'l', 'xl', 'xxl']] # sizes at each training stage (curriculum learning)
+TRAINING_SIZES = [['s'], ['s', 'm'], ['s', 'm', 'l'], ['m', 'l', 'xl'], ['s', 'm', 'l', 'xl', 'xxl']] # sizes at each training stage (curriculum learning)
 SOLVING_SIZES  = ['s'] # problem to solve in inference mode
