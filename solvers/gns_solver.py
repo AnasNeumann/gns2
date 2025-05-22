@@ -339,13 +339,13 @@ def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: S
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
             Q_values: Tensor = model(state, poss_actions, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
+            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_TRAINING_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
         else:
             return random.randint(0, len(poss_actions)-1)
     else:
         with torch.no_grad():
             Q_values: Tensor = model(state, poss_actions, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
+            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_TESTING_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
 
 # Compute setup times with current design settings and operation types of each finite-capacity resources
 def compute_setup_time(instance: Instance, graph: GraphInstance, op_id: int, res_id: int):
