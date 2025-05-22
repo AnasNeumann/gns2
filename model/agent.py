@@ -97,14 +97,13 @@ class Agent:
                 x = predicted quality of (s, a) using the policy network
                 L(x, y) = 1/2 (x-y)^2 for small errors (|x-y| ≤ δ) else δ|x-y| - 1/2 x δ^2
         """
-        memory: list[Action] = replay_memory.flat_memories[self.action_type]
-        if len(memory) == 0:
+        if replay_memory.flat_memories[self.action_type].size == 0:
             return 0.0
-        indices = random.sample(range(len(memory)), min(BATCH_SIZE, len(memory)))
-        actions: list[Action] = [memory[i] for i in indices]
+        actions, idxs, is_w = replay_memory.sample(self.action_type, BATCH_SIZE)
+        is_w = is_w.to(self.device)
         self.optimizer.zero_grad(set_to_none=True)
-        loss_accum: float = 0
-        for action in actions:
+        td_errors = []
+        for k, action in enumerate(actions):
             history: HistoricalState = action.parent_state
             _alpha: Tensor           = history.tree.conf.alpha
             Q_logits: Tensor         = self.policy(history.state, history.possible_actions, _alpha) # Qπ(s,a)
@@ -117,13 +116,18 @@ class Agent:
                 next_target_agent: Module   = self.multi_agents_system.agents[next_state.actions_tested[0].action_type].target
                 with torch.no_grad(): # max_a′ Q_target_{who_acts_next}(s′,a′)
                     Q_next_logits: Tensor   = next_target_agent(next_state.state, next_state.possible_actions, _alpha)
-                max_Q_next: Tensor          = Q_next_logits.max()
+                    max_Q_next: Tensor          = Q_next_logits.max()
                 target_val: Tensor          = action.reward + GAMMA * max_Q_next
-            huber_loss = F.smooth_l1_loss(Q_sa, target_val, reduction="mean", beta=DELTA)
+            d_k = (target_val - Q_sa).detach()
+            td_errors.append(d_k)
+            huber_loss = F.smooth_l1_loss(Q_sa, target_val, reduction="mean", beta=DELTA) * is_w[k]
             huber_loss.backward()
             loss_accum += huber_loss.item()
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), MAX_GRAD_NORM)
         self.optimizer.step()
+        with torch.no_grad():
+            new_p = torch.stack(td_errors).abs() + 1e-5
+        replay_memory.update_priorities(self.action_type, idxs, new_p)
         return loss_accum / len(actions)
 
 class OustourcingAgent(Agent):
@@ -149,7 +153,7 @@ class MaterialAgent(Agent):
         self.target: MaterialActor = MaterialActor()
         self.target.load_state_dict(self.policy.state_dict())
         self._compile_and_move()
-    
+
 class Agents:
     def __init__(self, device: str, base_path: str, version: int=-1, interactive: bool=False):
         self.device: str = device

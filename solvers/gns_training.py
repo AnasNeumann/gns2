@@ -35,8 +35,7 @@ def train(agents: Agents, path: str, device: str, version:int, itrs: int, debug:
     instance, tree = get_instance_and_tree(dataset, agents)
     for episode in range(1, EPISODES+1):
         instance, tree = get_instance_and_tree(dataset, agents, episode, instance, tree)
-        _greedy = random.random() <= 0.8
-        solve(instance=instance, agents=agents, train=True, device=device, greedy=_greedy, REPLAY_MEMORY=tree, episode=episode, debug=debug)
+        solve(instance=instance, agents=agents, train=True, device=device, REPLAY_MEMORY=tree, episode=episode, debug=debug)
         if episode % TRAINING_ITRS == 0: 
             hl: list[float] = agents.optimize()
             print(f"Training episode: {episode} [time={(systime.time()-_start_time):.2f}] -- instance: ({instance.size}, {instance.id}) -- Outsourcing Loss: {hl[OUTSOURCING]:.2f} -- Scheduling Loss: {hl[SCHEDULING]:.2f} -- Material Use Loss: {hl[MATERIAL_USE]:.2f}")

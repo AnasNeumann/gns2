@@ -333,19 +333,19 @@ def init_queue(i: Instance, graph: GraphInstance):
 # ################################
 
 # Select one action based on current policy
-def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1, greedy: bool=True):
+def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1):
     model: Module = agents.agents[actions_type].policy
     if train:
         eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
             Q_values: Tensor = model(state, poss_actions, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
+            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
         else:
             return random.randint(0, len(poss_actions)-1)
     else:
         with torch.no_grad():
             Q_values: Tensor = model(state, poss_actions, alpha)
-            return torch.argmax(Q_values.view(-1)).item() if greedy else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
+            return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()
 
 # Compute setup times with current design settings and operation types of each finite-capacity resources
 def compute_setup_time(instance: Instance, graph: GraphInstance, op_id: int, res_id: int):
@@ -365,7 +365,7 @@ def next_possible_time(instance: Instance, time_to_test: int, p: int, o: int):
         return ((time_to_test // scale) + 1) * scale
 
 # Main function to solve an instance from sratch 
-def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: bool=False, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
+def solve(instance: Instance, agents: Agents, train: bool, device: str, REPLAY_MEMORY: Tree=None, episode: int=0, debug: bool=False):
     global DEBUG_PRINT
     DEBUG_PRINT                            = debug_printer(debug)
     best_cmax: int                         = -1
@@ -403,7 +403,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                     REPLAY_MEMORY.init_state = state_before_action
             if step < banned_step: # (1/4) forced to remake the previous decision
                 idx: int = past_decision_made[step]
-            elif step == banned_step: 
+            elif step == banned_step:
                 if actions_type == OUTSOURCING: # (2/4) switch the banned outsourcing decision to foce a change
                     item_id, past_choice = poss_actions[past_decision_made[step]]
                     new_choice = YES if past_choice == NO else NO
@@ -411,14 +411,15 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
                         target = (item_id, new_choice)
                         idx = poss_actions.index(target)
                     except ValueError:
+                        print("*** error outsourcing idx does not exist....")
                         idx = random.choice(range(len(poss_actions)))
                 else: # (3/4) remove the banned scheduling decision to foce a change
                     banned: int = past_decision_made[step]
                     poss_actions_without_banned = poss_actions[:banned] + poss_actions[banned+1:]
-                    _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode, greedy)
+                    _i = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions_without_banned, alpha, train, episode)
                     idx = _i if _i < banned else _i + 1
             else: # (4/4) take a brand new decision freely
-                idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode, greedy)
+                idx = select_next_action(agents, REPLAY_MEMORY, actions_type, state, poss_actions, alpha, train, episode)
             decision_made.append(idx)
             nb_decisions.append(len(poss_actions))
             decision_type.append(actions_type)
@@ -487,9 +488,9 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, greedy: 
         banned_step +=1
         while banned_step < len(past_decision_made) and (past_nb_decisions[banned_step] < 2 or past_decision_type[banned_step] == MATERIAL_USE):
             banned_step +=1
+        if retry < nb_repetitions:
+            print(f"RETRY {retry}/{nb_repetitions}: best nb of steps = {len(past_decision_made)} - last nb of steps = {len(decision_made)} - next banned step = {banned_step}...")
         if banned_step >= len(past_decision_made) or past_nb_decisions[banned_step] < 2:
             break
         retry += 1
-        if retry <= nb_repetitions:
-            print(f"RETRY {retry}/{nb_repetitions}: best nb of steps = {len(past_decision_made)} - last nb of steps = {len(decision_made)} - next banned step = {banned_step}...")
     return best_cmax, best_cost

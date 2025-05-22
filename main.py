@@ -34,7 +34,7 @@ def solve_one_instance(instance: Instance, size: str, agents: Agents, device: st
     best_cost = -1.0
     best_obj = -1.0
     print(f"SOLVING INSTANCE {size}_{instance.id}...")
-    current_cmax, current_cost = solve(instance, agents=agents, train=False, device=device, greedy=True, debug=debug)
+    current_cmax, current_cost = solve(instance, agents=agents, train=False, device=device, debug=debug)
     _obj = objective_value(current_cmax, current_cost, instance.w_makespan)/100
     if best_obj < 0 or _obj < best_obj:
         best_obj = _obj
