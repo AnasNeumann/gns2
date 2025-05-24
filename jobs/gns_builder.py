@@ -40,7 +40,7 @@ if __name__ == '__main__':
     f.write("virtualenv --no-download $SLURM_TMPDIR/env\n")
     f.write("source $SLURM_TMPDIR/env/bin/activate\n")
     f.write("pip install --upgrade pip --no-index\n")
-    f.write("pip install --no-index -r "+BASIC_PATH+"requirements.txt\n")
+    f.write("pip install --no-index -r "+BASIC_PATH+"requirements/gns_wheels.txt\n")
     f.write(f"python {BASIC_PATH}main.py --train=true --mode=prod --version={args.version} --itrs={args.itrs} --interactive=false --path="+BASIC_PATH+" \n")
     f.write("deactivate\n")
     f.close()
