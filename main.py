@@ -89,10 +89,11 @@ if __name__ == '__main__':
     _debug_mode = (args.mode == 'test')
     if to_bool(args.train):
             # python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --change_version=1 --interactive=true 
-            _switch: bool = (int(args.change_version) == 1)
-            next_itr: int = 0 if _switch else _itrs
+            _switch: bool    = (int(args.change_version) == 1)
+            next_itr: int    = 0 if _switch else _itrs
+            new_version: int = _version + 1 if _switch else _version
             agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, switch_version=_switch, path=args.path, interactive=to_bool(args.interactive))
-            train(version=_version, itrs=next_itr, agents=agents, path=args.path, device=_device, debug=_debug_mode)
+            train(version=new_version, itrs=next_itr, agents=agents, path=args.path, device=_device, debug=_debug_mode)
     else:
         agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, switch_version=False, path=args.path, interactive=to_bool(args.interactive))
         if to_bool(args.target):

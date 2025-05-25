@@ -9,7 +9,7 @@ __license__ = "MIT"
 
 '''
     TEST WITH
-    python jobs/gns_builder.py --time=20 --memory=16 --cpu=1 --version=1 --itrs=0 --account=x --parent=y --mail=x@mail.com
+    python jobs/gns_builder.py --time=24 --memory=12 --cpu=1 --version=1 --itrs=6000 --account=x --parent=y --mail=x@mail.com
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII job builder")
