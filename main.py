@@ -59,10 +59,11 @@ def solve_all_instances(agents: Agents, version: int, device: str, path: str, de
     for i in dataset.test_instances:
         solve_one_instance(instance=i, size=str(i.size), agents=agents, device=device, path=path, debug=debug)
 
-def build_agents(device: str, version: int, itrs: int, path: str, interactive: bool):
-    agents: Agents = Agents(device=device, base_path=path, version=version, interactive=interactive)
+def build_agents(device: str, version: int, itrs: int, switch_version: bool, path: str, interactive: bool):
+    new_version: int = version + 1 if switch_version else version
+    agents: Agents = Agents(device=device, base_path=path, version=new_version, interactive=interactive)
     if version > 1 or itrs > 0:
-        agents.load(itrs)
+        agents.load(version, itrs)
     return agents
 
 # MAIN CODE STARTING POINT ##############################################################################################
@@ -78,6 +79,7 @@ if __name__ == '__main__':
     parser.add_argument("--interactive", help="Display losses, cmax, and cost in real-time or not", required=False)
     parser.add_argument("--version", help="The version of the current run", required=True)
     parser.add_argument("--itrs", help="The number of iterations of the current run", required=True)
+    parser.add_argument("--change_version", help="should we change version at the new start", required=False)
     args = parser.parse_args()
     print(f"Execution mode: {args.mode}...")
     _version = int(args.version)
@@ -85,13 +87,16 @@ if __name__ == '__main__':
     _device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"TPU Device: {_device}...")
     _debug_mode = (args.mode == 'test')
-    agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, path=args.path, interactive=to_bool(args.interactive))
     if to_bool(args.train):
-            # python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --interactive=true 
-            train(version=_version, itrs=_itrs, agents=agents, path=args.path, device=_device, debug=_debug_mode)
+            # python main.py --train=true --path=./ --mode=prod --version=1 --itrs=0 --change_version=1 --interactive=true 
+            _switch: bool = (int(args.change_version) == 1)
+            next_itr: int = 0 if _switch else _itrs
+            agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, switch_version=_switch, path=args.path, interactive=to_bool(args.interactive))
+            train(version=_version, itrs=next_itr, agents=agents, path=args.path, device=_device, debug=_debug_mode)
     else:
+        agents: Agents = build_agents(device=_device, version=_version, itrs=_itrs, switch_version=False, path=args.path, interactive=to_bool(args.interactive))
         if to_bool(args.target):
-            # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151  --interactive=false
+            # python main.py --train=false --target=true --path=./ --mode=test --version=1 --itrs=0 --size=s --id=151 --interactive=false
             dataset: Dataset = Dataset(base_path=args.path)
             solve_one_instance(instance=dataset.load_one(args.size, args.id), size=args.size, agents=agents, device=_device, path=args.path, debug=_debug_mode)
         else:

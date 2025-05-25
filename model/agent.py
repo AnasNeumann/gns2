@@ -161,10 +161,10 @@ class Agents:
                                     SchedulingAgent(self, self.device, interactive), 
                                     MaterialAgent(self, self.device, interactive)]
 
-    def load(self, itrs: int):
+    def load(self, version: int, itrs: int):
         for agent in self.agents:
-            agent.load(self.base_path, self.version, itrs, self.device)
-        with open(f"{self.base_path}memory_{self.version}_{itrs}.pth", 'rb') as file:
+            agent.load(self.base_path, version, itrs, self.device)
+        with open(f"{self.base_path}memory_{version}_{itrs}.pth", 'rb') as file:
             self.memory: Memory = pickle.load(file)
 
     def save(self, itrs: int):

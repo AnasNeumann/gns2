@@ -9,7 +9,7 @@ __license__ = "MIT"
 
 '''
     TEST WITH
-    python jobs/gns_builder.py --account=x --parent=y --mail=x@mail.com --time=20 --memory=16 --cpu=1 --version=1 --itrs=0
+    python jobs/gns_builder.py --time=20 --memory=16 --cpu=1 --version=1 --itrs=0 --account=x --parent=y --mail=x@mail.com
 '''
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="EPSIII job builder")
@@ -41,6 +41,6 @@ if __name__ == '__main__':
     f.write("source $SLURM_TMPDIR/env/bin/activate\n")
     f.write("pip install --upgrade pip --no-index\n")
     f.write("pip install --no-index -r "+BASIC_PATH+"requirements/gns_wheels.txt\n")
-    f.write(f"python {BASIC_PATH}main.py --train=true --mode=prod --version={args.version} --itrs={args.itrs} --interactive=false --path="+BASIC_PATH+" \n")
+    f.write(f"python {BASIC_PATH}main.py --train=true --mode=prod --version={args.version} --itrs={args.itrs} --interactive=false --change_version=1 --path="+BASIC_PATH+" \n")
     f.write("deactivate\n")
     f.close()
