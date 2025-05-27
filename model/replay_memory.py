@@ -118,6 +118,8 @@ class Tree:
             if not _found:
                 action.parent_state = self.init_state
                 self.init_state.actions_tested.append(action)
+                key = (action.target, action.value)
+                action.id = action.parent_state.possible_actions.index(key)
                 self.size += 1
                 _a: Action = action
                 self.global_memory.add_action(_a)
@@ -139,6 +141,8 @@ class Tree:
             if not _found:
                 action.parent_state.actions_tested.append(action)
                 self.size += 1
+                key = (action.target, action.value)
+                action.id = action.parent_state.possible_actions.index(key)
                 _a: Action = action
                 self.global_memory.add_action(_a)
                 while _a.next_state.actions_tested:

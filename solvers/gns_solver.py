@@ -409,7 +409,7 @@ def solve(instance: Instance, agents: Agents, train: bool, device: str, REPLAY_M
                     new_choice = YES if past_choice == NO else NO
                     try:
                         target = (item_id, new_choice)
-                        idx = poss_actions.index(target)
+                        idx = poss_actions.index(target) if target in poss_actions else random.choice(range(len(poss_actions)))
                     except ValueError:
                         print("*** error outsourcing idx does not exist....")
                         idx = random.choice(range(len(poss_actions)))
