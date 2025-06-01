@@ -22,7 +22,7 @@ def get_instance_and_tree(dataset: Dataset, agents: Agents, episode: int=0, inst
     if instance is None or episode % SWITCH_INSTANCE == 0:
         print("...time to switch the instance!")
         instance: Instance = dataset.random_one()
-        tree: Tree = agents.memory.add_instance_if_new(id=instance.id)
+        tree: Tree = agents.memory.add_instance_if_new(id=instance.id, size=instance.size)
         return instance, tree
     return instance, tree
 
@@ -37,7 +37,7 @@ def train(agents: Agents, path: str, device: str, version:int, itrs: int, debug:
     for episode in range(1, _nb_epsides+1):
         instance, tree = get_instance_and_tree(dataset, agents, episode, instance, tree)
         solve(instance=instance, agents=agents, train=True, device=device, REPLAY_MEMORY=tree, episode=episode, debug=debug)
-        if episode % TRAINING_ITRS == 0: 
+        if episode % TRAINING_ITRS == 0:
             hl: list[float] = agents.optimize()
             print(f"Training episode: {episode} [time={(systime.time()-_start_time):.2f}] -- instance: ({instance.size}, {instance.id}) -- Outsourcing Loss: {hl[OUTSOURCING]:.2f} -- Scheduling Loss: {hl[SCHEDULING]:.2f} -- Material Use Loss: {hl[MATERIAL_USE]:.2f}")
         else:

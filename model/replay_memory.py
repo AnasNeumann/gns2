@@ -83,8 +83,9 @@ class Tree:
     """
         The memory of one specific instance (both pre-training and fine-tuning)
     """
-    def __init__(self, global_memory, instance_id: str):
+    def __init__(self, global_memory, instance_id: str, instance_size: int):
         self.instance_id: str = instance_id
+        self.instance_size: int = instance_size
         self.conf: InstanceConfiguration = None
         self.init_state: HistoricalState = None
         self.size: int = 0
@@ -159,11 +160,11 @@ class Memory:
         self.flat_memories: list[list[Action]] = [self.flat_non_final_outsourcing_memory, self.flat_non_final_scheduling_memory, self.flat_non_final_material_memory]
 
     #  Add a new instance if ID is not present yet
-    def add_instance_if_new(self, id: int) -> Tree:
+    def add_instance_if_new(self, id: int, size: int) -> Tree:
         for memory in self.instances:
-            if memory.instance_id == id:
+            if memory.instance_id == id and memory.instance_size == size:
                 return memory
-        new_memory: Tree = Tree(global_memory=self, instance_id=id)
+        new_memory: Tree = Tree(global_memory=self, instance_id=id, instance_size=size)
         self.instances.append(new_memory)
         return new_memory
 
