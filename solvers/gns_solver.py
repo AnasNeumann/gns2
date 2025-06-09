@@ -336,7 +336,7 @@ def init_queue(i: Instance, graph: GraphInstance):
 def select_next_action(agents: Agents, memory: Tree, actions_type: str, state: State, poss_actions: list[int], alpha: Tensor, train: bool=True, episode: int=1):
     model: Module = agents.agents[actions_type].policy
     if train:
-        eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / (EPS_DECAY_RATE * episode))
+        eps_threshold: float = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * episode / EPS_DECAY_RATE)
         if random.random() > eps_threshold and memory.size >= BATCH_SIZE:
             Q_values: Tensor = model(state, poss_actions, alpha)
             return torch.argmax(Q_values.view(-1)).item() if random.random() <= GREED_TRAINING_RATE else torch.multinomial(tensors_to_probs(Q_values.view(-1)), 1).item()

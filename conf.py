@@ -3,7 +3,7 @@ TEST_RETRY      = 24  # solving repetition in inference mode
 
 EPS_START       = 0.99   # starting value of epsilon
 EPS_END         = 0.005  # final value of epsilon
-EPS_DECAY_RATE  = 0.33   # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
+EPS_DECAY_RATE  = 1300   # controls the rate of exponential decay of epsilon, higher means a slower decay (≈35%)
 GAMMA           = 0.3    # discount factor
 DELTA           = 2.0    # Huber loss "threshold" parameter (distinguishing between small and big errors)
 TAU             = 0.003  # update rate of the target network
